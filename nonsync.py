@@ -8,9 +8,9 @@ from work import Work
 
 @ray.remote
 class Async(Scheduler):
-    def __init__(self, work: Work):
-        super(Scheduler, self).__init__(work)
+    def __init__(self, file: str, work: Work):
+        Scheduler.__init__(self, file, work)
 
     async def calc(self, work: Work, h: np.ndarray) -> np.ndarray:
-        self.sgd(work)
+        self.sgd(work, h)
         return

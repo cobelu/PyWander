@@ -1,5 +1,6 @@
 # Numpy files
 *.npz
+data/
 
 # Crap
 .idea/

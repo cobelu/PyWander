@@ -15,6 +15,7 @@ def main():
     sync = True
     duration = 1
     workers = 4
+    file = "data/netflix.npz"
     work = Work(0, 1)
     works = work.splits(workers)
     queue = Queue()
@@ -23,19 +24,21 @@ def main():
 
     # Create the communicators
     if sync:
-        schedulers = [Sync(w).remote() for w in works]
+        schedulers = [Sync.remote(file, w) for w in works]
         for i in range(duration):
             print("Iteration:", i)
     else:
-        schedulers = [Async(w).remote() for w in works]
+        schedulers = [Async.remote(file, w) for w in works]
+
+    print(schedulers)
 
     # Train
-    nxt = 0
-    count = 0
-    while count < duration:
-        w = queue.get()
-        schedulers[nxt].calc(w).remote()
-        nxt = (nxt + 1) % workers
+    # nxt = 0
+    # count = 0
+    # while count < duration:
+    #     w = queue.get()
+    #     schedulers[nxt].calc().remote(w)
+    #     nxt = (nxt + 1) % workers
 
 
 if __name__ == '__main__':
