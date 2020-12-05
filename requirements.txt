@@ -2,3 +2,4 @@ ray
 numpy
 scipy
 pandas
+sklearn

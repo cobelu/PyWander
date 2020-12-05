@@ -1,12 +1,14 @@
 import ray
 
 from scheduler import Scheduler
+from work import Work
 
 
 @ray.remote
 class Sync(Scheduler):
-    def __init__(self):
-        super(Scheduler, self).__init__()
+    def __init__(self, work: Work):
+        super(Scheduler, self).__init__(work)
 
-    def read(self):
-        return self.n
+    def calc(self, work: Work):
+        self.sgd(work)
+        return
