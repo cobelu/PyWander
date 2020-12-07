@@ -1,4 +1,5 @@
 from typing import Type
+from scipy.sparse import csr_matrix
 
 
 class Work:
@@ -6,6 +7,12 @@ class Work:
         assert low <= high, "Low should be greater than high"
         self.low = low
         self.high = high
+
+    @classmethod
+    def from_csr(cls, csr: csr_matrix):
+        low = 0  # Beginning is 0
+        high = csr.shape()[0]  # End is the number of rows
+        return cls(low, high)
 
     def splits(self, n: int):
         dim = self.dim()
