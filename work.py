@@ -1,3 +1,4 @@
+from random import shuffle
 from typing import Type
 from scipy.sparse import csr_matrix
 
@@ -14,7 +15,7 @@ class Work:
         high = csr.shape()[0]  # End is the number of rows
         return cls(low, high)
 
-    def splits(self, n: int):
+    def splits(self, n: int, shuffled=False):
         dim = self.dim()
         avg = dim // n
         extra = self.dim() % n
@@ -30,6 +31,8 @@ class Work:
             nxt = last + avg + 1
             works.append(Work(last, nxt))
             last = nxt
+        if shuffled:
+            shuffle(works)
         return works
 
     def individuals(self):

@@ -22,17 +22,17 @@ class Scheduler(object):
         self.lamda = 1
         # Sparse data is loaded as a CSR, sliced, converted to CSC, and shuffled
         self.a_csc: csc_matrix = Scheduler.load(file)[work.low:work.high].tocsc()
-        Scheduler.logger.debug("Loading ({0}, {1})".format(work.low, work.high))
-        Scheduler.logger.debug("Converted CSR to CSC")
-        shape = self.a_csc.shape
-        Scheduler.logger.debug("Size of CSC: ({0}, {1})".format(shape[0], shape[1]))
+        Scheduler.logger.debug("Loading ({0}, {1})...".format(work.low, work.high))
+        # Scheduler.logger.debug("Converted CSR to CSC")
+        rows, cols = self.a_csc.shape
+        # Scheduler.logger.debug("Size of CSC: ({0}, {1})".format(shape[0], shape[1]))
         # self.a_csc = shuffle(self.a_csc)  # TODO: Shuffle
         # Data to be found
-        self.w = np.random.rand(self.k) * 1.0 / np.sqrt(self.k)
-        self.h = np.random.rand(self.k) * 1.0 / np.sqrt(self.k)
+        self.w = np.random.rand(rows, self.k) * 1.0 / np.sqrt(self.k)
+        self.h = np.random.rand(self.k, cols) * 1.0 / np.sqrt(self.k)
 
     def sgd(self, work: Work, h: np.ndarray):
-        Scheduler.logger.debug("Working on ({0}, {1})".format(work.low, work.high))
+        Scheduler.logger.debug("Crunching on ({0}, {1})".format(work.low, work.high))
         if h:
             self.h = h
         # Keeping track of RMSE along the way
@@ -47,14 +47,14 @@ class Scheduler(object):
         Scheduler.logger.debug("NNZ: {0}".format(len(nz_ids[0])))
         try:
             for j in range(low, high):
-                hj = self.h[j]
+                hj = self.h[:, j]
                 for i_iter in range(self.a_csc.indptr[j], self.a_csc.indptr[j+1]):
                     i = self.a_csc.indices[i_iter]
                     # Get the respective entries
-                    aij = self.a_csc.data[i_iter]
-                    Scheduler.logger.debug("Considering ({0}, {1}): {2}".format(i, j, aij))
                     wi = self.w[i]
+                    aij = self.a_csc.data[i_iter]
                     # error = [(Wi • Hj) - Aij]
+                    entry = np.dot(wi, hj)
                     err = aij - np.dot(wi, hj)
                     tmp = wi
                     # Wi -= lrate * (err*Hj + lambda*Wi)
@@ -62,7 +62,6 @@ class Scheduler(object):
                     # Hj -= lrate * (err*tmp + lambda*Hj);
                     hj -= self.alpha * (err*tmp + self.lamda*hj)
                     # Calculate Error
-                    entry = np.Dot(wi, hj)  # yi'
                     term = np.power(entry - aij, 2)  # (yi' - yi)^2
                     total += term  # Σ_i=1 ^ n(yi' - yi)^2
                     nnz += 1
@@ -91,3 +90,4 @@ class Scheduler(object):
             Scheduler.logger.warning("Could not find file!")
             shape = (0, 0)
         return shape
+
