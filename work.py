@@ -29,7 +29,7 @@ class Work:
         for i in range(n-extra, n):
             nxt = last + avg + 1
             works.append(Work(last, nxt))
-            last = next
+            last = nxt
         return works
 
     def individuals(self):
@@ -38,3 +38,6 @@ class Work:
 
     def dim(self):
         return self.high - self.low
+
+    def __str__(self):
+        return "Work:[" + str(self.low) + ", " + str(self.high) + "]"

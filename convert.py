@@ -38,7 +38,7 @@ def main():
     print("Num items:", num_items)
 
     # Create the sparse matrix as a CSR
-    sparse_matrix = coo_matrix((ratings, (users, items))).tocsr()
+    sparse_matrix: csr_matrix = coo_matrix((ratings, (users, items))).tocsr()
     # Save the sparse matrix
     if not (os.path.exists(out_file)):
         # create the directory you want to save to

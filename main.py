@@ -15,12 +15,17 @@ from ray.util.queue import Queue
 def main():
     ray.init()
 
-    sync = True
+    sync = False
     duration = 1
     workers = 4
     file = "data/netflix.npz"
-    work = Work(0, 17000)
+    shape = Scheduler.load_dims(file)
+    num_rows, num_cols = shape[0], shape[1]
+    work = Work(0, num_rows)
     works = work.splits(workers)
+    print("Works:")
+    for w in works:
+        print(w)
     queue = Queue()
     for w in works:
         queue.put(w)
@@ -52,9 +57,11 @@ def main():
     #     schedulers[nxt].calc().remote(w)
     #     nxt = (nxt + 1) % workers
 
-    works = [scheduler.sgd.remote(Work(0, 1), np.array(0)) for scheduler in schedulers]
-    results = ray.get(works)
-    print(results)
+    works = [scheduler.sgd.remote(Work(0, 1), None) for scheduler in schedulers]
+    results = ray.get(works, timeout=1000)
+    print("Results:\n{0}".format(results))
+
+    ray.shutdown()
 
 
 if __name__ == '__main__':

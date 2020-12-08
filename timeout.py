@@ -10,7 +10,3 @@ class TimeoutException(Exception):
 
 def alarm_handler(signum, frame):
     raise TimeoutException()
-
-
-signal.signal(signal.SIGALRM, alarm_handler)
-signal.alarm(8)
