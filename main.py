@@ -18,19 +18,24 @@ def main():
     ray.init()
 
     sync = True
-    duration = 1
+    duration = 5
     workers = 4
     file = "data/netflix.npz"
     rows, cols, normalizer = Scheduler.load_dims(file)
     first_work = Work(0, cols)
     works = first_work.splits(workers, True)
+    print(', '.join(map(str, works)))
+    h = [None for _ in range(workers)]
 
     # Create the communicators
     if sync:
         schedulers = [Sync.remote(file, normalizer, w) for w in works]
-        for i in range(duration):
+        for i in range(1, duration+1):
             print("Iteration: {0}".format(i))
-            works = [schedulers[i].sgd.remote(works[i], None) for i in range(len(schedulers))]
+            results = [schedulers[i].sgd.remote(works[i], h[i]) for i in range(workers)]
+            got_results = [ray.get(results[i], timeout=1000) for i in range(workers)]
+            print("Results: {0})".format(got_results))
+            # print("Results: (totals: {0}, nnzs: {1})".format(totals, nnzs))
     else:
         schedulers = [Async.remote(file, w) for w in works]
         signal.signal(signal.SIGALRM, alarm_handler)
@@ -52,8 +57,6 @@ def main():
     #     w = queue.get()
     #     schedulers[nxt].calc().remote(w)
     #     nxt = (nxt + 1) % workers
-    results = ray.get(works, timeout=1000)
-    print("Results:\n{0}".format(results))
 
     ray.shutdown()
 

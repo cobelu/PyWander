@@ -33,14 +33,12 @@ class Scheduler(object):
         # Data to be found
         rng = np.random.default_rng()
         self.w: np.ndarray = (1 / np.sqrt(self.k)) * rng.random((rows, self.k))
-        print("w: (min: {0}, max: {1}, NaN: {2}, type: {3})".format(
-            np.min(self.w), np.max(self.w), np.isnan(self.w).any(), self.w.dtype))
         self.h: np.ndarray = (1 / np.sqrt(self.k)) * rng.random((self.k, cols))
-        print("h: (min: {0}, max: {1}, NaN: {2}, type: {3})".format(
-            np.min(self.h), np.max(self.h), np.isnan(self.h).any(), self.h.dtype))
 
-    def sgd(self, work: Work, h: np.ndarray):
-        Scheduler.logger.debug("Crunching on ({0}, {1})".format(work.low, work.high))
+    @ray.method(num_returns=2)
+    def sgd(self, work: Work, h=None) -> (float, int):  # , np.ndarray):
+        Scheduler.logger.debug("Crunching on {0}...".format(work))
+        # Scheduler.logger.debug("Crunching on ({0}, {1})".format(work.low, work.high))
         if h:
             self.h = h
         # Keeping track of RMSE along the way
@@ -53,7 +51,7 @@ class Scheduler(object):
         try:
             for j in range(low, high):
                 hj = self.h[:, j]
-                for i_iter in range(self.a_csc.indptr[j], self.a_csc.indptr[j+1]):
+                for i_iter in range(self.a_csc.indptr[j], self.a_csc.indptr[j + 1]):
                     i = self.a_csc.indices[i_iter]
                     # Get the respective entries
                     wi = self.w[i]
@@ -63,9 +61,9 @@ class Scheduler(object):
                     tmp = wi  # Temp stored for wi to be replaced gracefully
                     # Descent
                     # Wi -= lrate * (err*Hj + lambda*Wi)
-                    wi -= self.alpha * (err*hj + self.lamda*wi)
+                    wi -= self.alpha * (err * hj + self.lamda * wi)
                     # Hj -= lrate * (err*tmp + lambda*Hj);
-                    hj -= self.alpha * (err*tmp + self.lamda*hj)
+                    hj -= self.alpha * (err * tmp + self.lamda * hj)
                     # Calculate RMSE
                     test_wi = wi * np.sqrt(self.normalizer)
                     test_hj = hj * np.sqrt(self.normalizer)
@@ -75,8 +73,8 @@ class Scheduler(object):
                     # Note the count of the nnz
                     nnz_ctr += 1
         except TimeoutException:
-            return total, nnz_ctr, self.h
-        return total, nnz_ctr, self.h
+            return total, nnz_ctr  # , self.h
+        return total, nnz_ctr  # , self.h
 
     def load(self, filename: str) -> csr_matrix:
         Scheduler.logger.debug("Loading " + filename)
@@ -102,4 +100,3 @@ class Scheduler(object):
             shape = (0, 0)
             normalizer = 1
         return shape[0], shape[1], normalizer
-

@@ -43,4 +43,4 @@ class Work:
         return self.high - self.low
 
     def __str__(self):
-        return "Work:[" + str(self.low) + ", " + str(self.high) + "]"
+        return "Work{" + str(self.low) + ", " + str(self.high) + "}"
