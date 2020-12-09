@@ -1,10 +1,13 @@
 import logging
-from typing import Type
+import random
+from typing import Type, List
 import numpy as np
 import ray
+from ray.util.queue import Queue
 from scipy.sparse import csr_matrix, csc_matrix, load_npz
 from sklearn.utils import shuffle
 
+from parameters import Parameters
 from timeout import TimeoutException
 from work import Work
 
@@ -13,16 +16,15 @@ class Scheduler(object):
     logging.basicConfig(level=logging.DEBUG)
     logger = logging.getLogger(__name__)
 
-    def __init__(self, file: str, normalizer: float, work: Work):
-        Scheduler.logger.debug("Got file:" + file)
+    def __init__(self, i: int, p: Parameters, work: Work, queues: List[Queue]):
+        Scheduler.logger.debug("Got file:" + p.file)
+        self.i = i
         # Parameters
-        self.k = 100
-        self.alpha = 0.08
-        self.beta = 0.05
-        self.lamda = 1
+        self.p = p
         # Sparse data is loaded as a CSR, sliced, converted to CSC, and shuffled
-        self.normalizer = normalizer
-        self.a_csc: csc_matrix = self.load(file)[work.low:work.high].tocsc()
+        self.queues = queues
+        self.normalizer = p.normalizer
+        self.a_csc: csc_matrix = self.load(p.file)[work.low:work.high].tocsc()
         Scheduler.logger.debug("Loading ({0}, {1})...".format(work.low, work.high))
         # Scheduler.logger.debug("Converted CSR to CSC")
         shape = self.a_csc.shape
@@ -32,15 +34,15 @@ class Scheduler(object):
         # self.a_csc = shuffle(self.a_csc)  # TODO: Shuffle
         # Data to be found
         rng = np.random.default_rng()
-        self.w: np.ndarray = (1 / np.sqrt(self.k)) * rng.random((rows, self.k))
-        self.h: np.ndarray = (1 / np.sqrt(self.k)) * rng.random((self.k, cols))
+        self.w: np.ndarray = (1 / np.sqrt(self.p.k)) * rng.random((rows, self.p.k))
+        self.h: np.ndarray = (1 / np.sqrt(self.p.k)) * rng.random((self.p.k, cols))
 
-    @ray.method(num_returns=2)
-    def sgd(self, work: Work, h=None) -> (float, int):  # , np.ndarray):
-        Scheduler.logger.debug("Crunching on {0}...".format(work))
+    @ray.method(num_returns=3)
+    def sgd(self, work: Work, h=None) -> (float, int, np.ndarray):
+        Scheduler.logger.debug("Crunching on {0}".format(work))
         # Scheduler.logger.debug("Crunching on ({0}, {1})".format(work.low, work.high))
-        if h:
-            self.h = h
+        if h is not None:
+            self.h = np.asarray(np.copy(h))  # Ray objects are immutable
         # Keeping track of RMSE along the way
         nnz_ctr = 0
         total = 0
@@ -61,9 +63,9 @@ class Scheduler(object):
                     tmp = wi  # Temp stored for wi to be replaced gracefully
                     # Descent
                     # Wi -= lrate * (err*Hj + lambda*Wi)
-                    wi -= self.alpha * (err * hj + self.lamda * wi)
+                    wi -= self.p.alpha * (err * hj + self.p.lamda * wi)
                     # Hj -= lrate * (err*tmp + lambda*Hj);
-                    hj -= self.alpha * (err * tmp + self.lamda * hj)
+                    hj -= self.p.alpha * (err * tmp + self.p.lamda * hj)
                     # Calculate RMSE
                     test_wi = wi * np.sqrt(self.normalizer)
                     test_hj = hj * np.sqrt(self.normalizer)
@@ -73,8 +75,8 @@ class Scheduler(object):
                     # Note the count of the nnz
                     nnz_ctr += 1
         except TimeoutException:
-            return total, nnz_ctr  # , self.h
-        return total, nnz_ctr  # , self.h
+            return total, nnz_ctr, self.h
+        return total, nnz_ctr, self.h
 
     def load(self, filename: str) -> csr_matrix:
         Scheduler.logger.debug("Loading " + filename)
@@ -87,6 +89,14 @@ class Scheduler(object):
             Scheduler.logger.debug("Could not find file!")
             raise Exception("oops")
         return sparse_matrix
+
+    def send(self, work: Work):
+        workers = self.p.n
+        another_worker = self.i + 1 + random.randint(workers - 1) % workers
+        return self.queues[another_worker].put(work)
+
+    def ready(self) -> bool:
+        return True
 
     @staticmethod
     def load_dims(filename: str) -> (int, int, float):
