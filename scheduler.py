@@ -12,6 +12,7 @@ from timeout import TimeoutException
 from work import Work
 
 
+@ray.remote
 class Scheduler(object):
     logging.basicConfig(level=logging.DEBUG)
     logger = logging.getLogger(__name__)

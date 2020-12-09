@@ -8,9 +8,8 @@ import signal
 import numpy as np
 from ray.util.queue import Queue
 
-from nonsync import Async
+from parameters import Parameters
 from scheduler import Scheduler
-from sync import Sync
 from timeout import alarm_handler, TimeoutException
 from work import Work
 
@@ -25,6 +24,7 @@ def main():
     workers = 4
     file = "data/netflix.npz"
     rows, cols, normalizer = Scheduler.load_dims(file)
+    p = Parameters(sync, workers, duration, k, alpha, beta, lamda, normalizer, file)
 
     # print(sys.float_info)
     ray.init()
@@ -38,7 +38,7 @@ def main():
 
     # Create the communicators
     if sync:
-        schedulers = [Sync.remote(file, normalizer, works[i], queues) for i in range(workers)]
+        schedulers = [Scheduler.remote(i, p, works[i], queues) for i in range(workers)]
         readies = [scheduler.ready.remote() for scheduler in schedulers]
         print("Waiting...")
         ray.wait(readies, num_returns=workers)
@@ -55,7 +55,7 @@ def main():
             print("RMSE: {0}".format(np.sqrt(total/nnz)))
     else:
         while True:
-            schedulers = [Async.remote(file, w) for w in works]
+            schedulers = [Scheduler.remote(file, w) for w in works]
             signal.signal(signal.SIGALRM, alarm_handler)
             signal.alarm(duration)
             try:
