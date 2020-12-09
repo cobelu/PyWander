@@ -34,8 +34,10 @@ def main():
             print("Iteration: {0}".format(i))
             results = [schedulers[i].sgd.remote(works[i], h[i]) for i in range(workers)]
             got_results = [ray.get(results[i], timeout=1000) for i in range(workers)]
-            print("Results: {0})".format(got_results))
-            # print("Results: (totals: {0}, nnzs: {1})".format(totals, nnzs))
+            totals = [row[0] for row in got_results]
+            nnzs = [row[1] for row in got_results]
+            # print("Results: {0})".format(got_results))
+            print("Results: (totals: {0}, nnzs: {1})".format(totals, nnzs))
     else:
         schedulers = [Async.remote(file, w) for w in works]
         signal.signal(signal.SIGALRM, alarm_handler)
