@@ -20,7 +20,7 @@ def main():
     beta = 0.05
     lamda = 1
     sync = True
-    duration = 10
+    duration = 2
     workers = 4
     file = "data/netflix.npz"
     rows, cols, normalizer = Scheduler.load_dims(file)
@@ -28,13 +28,12 @@ def main():
 
     ray.init()
     row_works = Work(0, rows).splits(workers, True)
-    print(', '.join(map(str, row_works)))
+    col_works = Work(0, cols).splits(workers, True)
     hs = [None for _ in range(workers)]
     schedulers = [Scheduler.remote(i, p, row_works[i]) for i in range(workers)]
 
-    col_works = Work(0, cols).splits(workers, True)
-    dumpeds = [schedulers[i].dump.remote([col_works[i]]) for i in range(workers)]
-    ray.wait(dumpeds, num_returns=workers)
+    # dumpeds = [schedulers[i].dump.remote([col_works[i]]) for i in range(workers)]
+    # ray.wait(dumpeds, num_returns=workers)
 
     total = 0
     nnz = 0
@@ -45,8 +44,8 @@ def main():
         print("Ready!")
         for step in range(1, duration+1):
             print("Iteration: {0}".format(step))
-            results = [schedulers[i].sgd.remote(hs[i]) for i in range(workers)]
-            got_results = [ray.get(results[i], timeout=1000) for i in range(workers)]
+            results = [schedulers[i].sgd.remote(col_works[i], hs[i]) for i in range(workers)]
+            got_results = [ray.get(results[i], timeout=10000) for i in range(workers)]
             machines_total = sum([row[0] for row in got_results])
             machines_nnz = sum([row[1] for row in got_results])
             hs = [row[2] for row in got_results]
