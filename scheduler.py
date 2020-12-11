@@ -39,17 +39,20 @@ class Scheduler(object):
     @ray.method(num_returns=3)
     def sgd(self, work: Work, h=None) -> (float, int, np.ndarray):
         # work = self.queue.get()
+        # TODO: Using CPU time? Check in on time.time()? Want wall clock time
         start = time.time()
         Scheduler.logger.debug("Crunching on {0}".format(work))
         # Scheduler.logger.debug("Crunching on ({0}, {1})".format(work.low, work.high))
         if h is not None:
-            self.h = np.asarray(np.copy(h))  # Ray objects are immutable
+            # TODO: Set column(s) instead
+            self.h[:, :] = np.asarray(np.copy(h))  # Ray objects are immutable
         # Keeping track of RMSE along the way
         nnz_ctr = 0
         total = 0
         # Mark the low and high
+        # TODO: Trying the COO
         for j in range(work.low, work.high):
-            hj = self.h[:, j]
+            hj = self.h[:, j]  # TODO: Nice syntax might be hiding performance
             for i_iter in range(self.a_csc.indptr[j], self.a_csc.indptr[j + 1]):
                 i = self.a_csc.indices[i_iter]
                 # Get the respective entries
@@ -73,7 +76,9 @@ class Scheduler(object):
                 nnz_ctr += 1
         # self.send(work)
         Scheduler.logger.debug("Worker {0} done in {1}".format(self.i, time.time() - start))
-        return total, nnz_ctr, self.h
+        # TODO: Return vector instead
+        id = ray.put(self.h)
+        return total, nnz_ctr, id
 
     def load(self, filename: str) -> csr_matrix:
         Scheduler.logger.debug("Loading " + filename)

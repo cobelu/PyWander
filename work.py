@@ -5,9 +5,14 @@ from scipy.sparse import csr_matrix
 
 class Work:
     def __init__(self, low: int, high: int):
-        assert low <= high, "Low should be greater than high"
+        assert low < high, "Low should be greater than high"
         self.low = low
         self.high = high
+        # TODO: Place h vectors on queue too?
+        # self.h_vecs = []
+        # Put h in and out of the store
+        # Rather than return h, return the bounds and pass
+
 
     @classmethod
     def from_csr(cls, csr: csr_matrix):
