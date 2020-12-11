@@ -6,8 +6,8 @@ from random import shuffle
 import ray
 import signal
 import numpy as np
-from ray.util.queue import Queue
 
+from queue import Queue
 from parameters import Parameters
 from scheduler import Scheduler
 from timeout import alarm_handler, TimeoutException
@@ -26,26 +26,26 @@ def main():
     rows, cols, normalizer = Scheduler.load_dims(file)
     p = Parameters(sync, workers, duration, k, alpha, beta, lamda, normalizer, file)
 
-    # print(sys.float_info)
     ray.init()
-    first_work = Work(0, cols)
-    works = first_work.splits(workers, True)
-    print(', '.join(map(str, works)))
+    row_works = Work(0, rows).splits(workers, True)
+    print(', '.join(map(str, row_works)))
     hs = [None for _ in range(workers)]
-    queues = [Queue() for _ in range(workers)]
+    schedulers = [Scheduler.remote(i, p, row_works[i]) for i in range(workers)]
+
+    col_works = Work(0, cols).splits(workers, True)
+    dumpeds = [schedulers[i].dump.remote([col_works[i]]) for i in range(workers)]
+    ray.wait(dumpeds, num_returns=workers)
+
     total = 0
     nnz = 0
-
-    # Create the communicators
     if sync:
-        schedulers = [Scheduler.remote(i, p, works[i], queues) for i in range(workers)]
         readies = [scheduler.ready.remote() for scheduler in schedulers]
         print("Waiting...")
         ray.wait(readies, num_returns=workers)
         print("Ready!")
-        for i in range(1, duration+1):
-            print("Iteration: {0}".format(i))
-            results = [schedulers[i].sgd.remote(works[i], hs[i]) for i in range(workers)]
+        for step in range(1, duration+1):
+            print("Iteration: {0}".format(step))
+            results = [schedulers[i].sgd.remote(hs[i]) for i in range(workers)]
             got_results = [ray.get(results[i], timeout=1000) for i in range(workers)]
             machines_total = sum([row[0] for row in got_results])
             machines_nnz = sum([row[1] for row in got_results])
@@ -55,11 +55,11 @@ def main():
             print("RMSE: {0}".format(np.sqrt(total/nnz)))
     else:
         while True:
-            schedulers = [Scheduler.remote(file, w) for w in works]
+            schedulers = [Scheduler.remote(file, w) for w in row_works]
             signal.signal(signal.SIGALRM, alarm_handler)
             signal.alarm(duration)
             try:
-                works = [schedulers[i].sgd.remote(works[i], None) for i in range(len(schedulers))]
+                row_works = [schedulers[i].sgd.remote(row_works[i], None) for i in range(len(schedulers))]
             except TimeoutException:
                 print("Timeout")
             finally:
