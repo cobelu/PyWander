@@ -8,19 +8,27 @@ import signal
 import numpy as np
 
 from queue import Queue
+
+from line_profiler import line_profiler
+
 from parameters import Parameters
 from scheduler import Scheduler
 from timeout import alarm_handler, TimeoutException
 from work import Work
 
+import atexit
+profile = line_profiler.LineProfiler()
+atexit.register(profile.print_stats)
 
+
+@profile
 def main():
     k = 100
     alpha = 0.08
     beta = 0.05
     lamda = 1
     sync = True
-    duration = 2
+    duration = 1
     workers = 4
     file = "data/netflix.npz"
     rows, cols, normalizer = Scheduler.load_dims(file)
@@ -51,6 +59,7 @@ def main():
             hs = [row[2] for row in got_results]
             total += machines_total
             nnz += machines_nnz
+            print("NNZ: {0}".format(nnz))
             print("RMSE: {0}".format(np.sqrt(total/nnz)))
     else:
         while True:

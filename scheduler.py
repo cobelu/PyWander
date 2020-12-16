@@ -1,4 +1,8 @@
+import profile
+
+import line_profiler
 import time
+import timeit
 import logging
 from typing import List, Any
 import numpy as np
@@ -35,6 +39,7 @@ class Scheduler(object):
         rng = np.random.default_rng()
         self.w: np.ndarray = (1 / np.sqrt(self.p.k)) * rng.random((rows, self.p.k))
         self.h: np.ndarray = (1 / np.sqrt(self.p.k)) * rng.random((self.p.k, cols))
+        self.tmp: np.ndarray = np.zeros(self.p.k)
 
     @ray.method(num_returns=3)
     def sgd(self, work: Work, h=None) -> (float, int, np.ndarray):
@@ -45,36 +50,58 @@ class Scheduler(object):
         # Scheduler.logger.debug("Crunching on ({0}, {1})".format(work.low, work.high))
         if h is not None:
             # TODO: Set column(s) instead
-            self.h[:, :] = np.asarray(np.copy(h))  # Ray objects are immutable
+            self.h = np.asarray(h)  # Ray objects are immutable
         # Keeping track of RMSE along the way
         nnz_ctr = 0
         total = 0
         # Mark the low and high
-        # TODO: Trying the COO
-        for j in range(work.low, work.high):
-            hj = self.h[:, j]  # TODO: Nice syntax might be hiding performance
-            for i_iter in range(self.a_csc.indptr[j], self.a_csc.indptr[j + 1]):
-                i = self.a_csc.indices[i_iter]
-                # Get the respective entries
-                wi = self.w[i]
-                aij = self.a_csc.data[i_iter]
-                # Error = [(Wi • Hj) - Aij]
-                err = aij - np.dot(wi, hj)
-                tmp = wi  # Temp stored for wi to be replaced gracefully
-                # Descent
-                # Wi -= lrate * (err*Hj + lambda*Wi)
-                wi -= self.p.alpha * (err * hj + self.p.lamda * wi)
-                # Hj -= lrate * (err*tmp + lambda*Hj);
-                hj -= self.p.alpha * (err * tmp + self.p.lamda * hj)
-                # Calculate RMSE
-                test_wi = wi * np.sqrt(self.normalizer)
-                test_hj = hj * np.sqrt(self.normalizer)
-                err = aij - np.dot(test_wi, test_hj)  # (yi' - yi)
-                term = np.power(err, 2)  # (yi' - yi)^2
-                total += term  # Σ_{i=1}^{n} (yi' - yi)^2
-                # Note the count of the nnz
-                nnz_ctr += 1
+        # for j in range(work.low, work.high):
+        #     hj = self.h[:, j]  # TODO: Nice syntax might be hiding performance
+        #     for i_iter in range(self.a_csc.indptr[j], self.a_csc.indptr[j + 1]):
+        #         i = self.a_csc.indices[i_iter]
+        #         # Get the respective entries
+        #         wi: np.ndarray = self.w[i]
+        #         aij = self.a_csc.data[i_iter]
+        #         # Error = [(Wi • Hj) - Aij]
+        #         err = aij - np.dot(wi, hj)
+        #         np.copyto(self.tmp, wi)  # Temp stored for wi to be replaced gracefully
+        #         # Descent
+        #         # Wi -= lrate * (err*Hj + lambda*Wi)
+        #         wi -= self.p.alpha * (err * hj + self.p.lamda * wi)
+        #         # Hj -= lrate * (err*tmp + lambda*Hj);
+        #         hj -= self.p.alpha * (err * self.tmp + self.p.lamda * hj)
+        #         # Calculate RMSE
+        #         test_wi = wi * np.sqrt(self.normalizer)
+        #         test_hj = hj * np.sqrt(self.normalizer)
+        #         err = aij - np.dot(test_wi, test_hj)  # (yi' - yi)
+        #         term = np.power(err, 2)  # (yi' - yi)^2
+        #         total += term  # Σ_{i=1}^{n} (yi' - yi)^2
+        #         # Note the count of the nnz
+        #         nnz_ctr += 1
         # self.send(work)
+        a: csc_matrix = self.a_csc[:, work.low:work.high]
+        for i, j in zip(a.nonzero()):
+            # Get the respective entries
+            wi: np.ndarray = self.w[i]
+            hj: np.ndarray = self.w[i]
+            aij = a[i, j]
+            # Error = [(Wi • Hj) - Aij]
+            err = aij - np.dot(wi, hj)
+            np.copyto(self.tmp, wi)  # Temp stored for wi to be replaced gracefully
+            # Descent
+            # Wi -= lrate * (err*Hj + lambda*Wi)
+            wi -= self.p.alpha * (err * hj + self.p.lamda * wi)
+            # Hj -= lrate * (err*tmp + lambda*Hj);
+            hj -= self.p.alpha * (err * self.tmp + self.p.lamda * hj)
+            # Calculate RMSE
+            test_wi = wi * np.sqrt(self.normalizer)
+            test_hj = hj * np.sqrt(self.normalizer)
+            err = aij - np.dot(test_wi, test_hj)  # (yi' - yi)
+            term = np.power(err, 2)  # (yi' - yi)^2
+            total += term  # Σ_{i=1}^{n} (yi' - yi)^2
+            # Note the count of the nnz
+            nnz_ctr += 1
+
         Scheduler.logger.debug("Worker {0} done in {1}".format(self.i, time.time() - start))
         # TODO: Return vector instead
         id = ray.put(self.h)

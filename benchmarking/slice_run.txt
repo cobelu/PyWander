@@ -1,0 +1,149 @@
+/usr/local/bin/python3.7 /Users/cobelu/Developer/Python/PyWander/test.py
+DEBUG:__main__:Getting dimensions of data/netflix.npz
+DEBUG:__main__:Got file:data/netflix.npz
+DEBUG:__main__:Loading data/netflix.npz
+DEBUG:__main__:Loaded data/netflix.npz
+DEBUG:__main__:Loading Work{0, 2649430}
+Done in 4590.098724126816s
+NNZ: 100480507
+RMSE: 0.856369981680827
+Timer unit: 1e-06 s
+
+Total time: 0 s
+File: /Users/cobelu/Developer/Python/PyWander/main.py
+Function: main at line 24
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    24                                           @profile
+    25                                           def main():
+    26                                               k = 100
+    27                                               alpha = 0.08
+    28                                               beta = 0.05
+    29                                               lamda = 1
+    30                                               sync = True
+    31                                               duration = 1
+    32                                               workers = 4
+    33                                               file = "data/netflix.npz"
+    34                                               rows, cols, normalizer = Scheduler.load_dims(file)
+    35                                               p = Parameters(sync, workers, duration, k, alpha, beta, lamda, normalizer, file)
+    36                                           
+    37                                               ray.init()
+    38                                               row_works = Work(0, rows).splits(workers, True)
+    39                                               col_works = Work(0, cols).splits(workers, True)
+    40                                               hs = [None for _ in range(workers)]
+    41                                               schedulers = [Scheduler.remote(i, p, row_works[i]) for i in range(workers)]
+    42                                           
+    43                                               # dumpeds = [schedulers[i].dump.remote([col_works[i]]) for i in range(workers)]
+    44                                               # ray.wait(dumpeds, num_returns=workers)
+    45                                           
+    46                                               total = 0
+    47                                               nnz = 0
+    48                                               if sync:
+    49                                                   readies = [scheduler.ready.remote() for scheduler in schedulers]
+    50                                                   print("Waiting...")
+    51                                                   ray.wait(readies, num_returns=workers)
+    52                                                   print("Ready!")
+    53                                                   for step in range(1, duration+1):
+    54                                                       print("Iteration: {0}".format(step))
+    55                                                       results = [schedulers[i].sgd.remote(col_works[i], hs[i]) for i in range(workers)]
+    56                                                       got_results = [ray.get(results[i], timeout=10000) for i in range(workers)]
+    57                                                       machines_total = sum([row[0] for row in got_results])
+    58                                                       machines_nnz = sum([row[1] for row in got_results])
+    59                                                       hs = [row[2] for row in got_results]
+    60                                                       total += machines_total
+    61                                                       nnz += machines_nnz
+    62                                                       print("NNZ: {0}".format(nnz))
+    63                                                       print("RMSE: {0}".format(np.sqrt(total/nnz)))
+    64                                               else:
+    65                                                   while True:
+    66                                                       schedulers = [Scheduler.remote(file, w) for w in row_works]
+    67                                                       signal.signal(signal.SIGALRM, alarm_handler)
+    68                                                       signal.alarm(duration)
+    69                                                       try:
+    70                                                           row_works = [schedulers[i].sgd.remote(row_works[i], None) for i in range(len(schedulers))]
+    71                                                       except TimeoutException:
+    72                                                           print("Timeout")
+    73                                                       finally:
+    74                                                           # Reset alarm clock
+    75                                                           signal.alarm(0)
+    76                                           
+    77                                               # Train
+    78                                               # nxt = 0
+    79                                               # count = 0
+    80                                               # while count < duration:
+    81                                               #     w = queue.get()
+    82                                               #     schedulers[nxt].calc().remote(w)
+    83                                               #     nxt = (nxt + 1) % workers
+    84                                           
+    85                                               ray.shutdown()
+
+Total time: 3758.81 s
+File: /Users/cobelu/Developer/Python/PyWander/test.py
+Function: sgd at line 59
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    59                                               @profile
+    60                                               def sgd(self, work: Work) -> (float, int):
+    61                                                   # work = self.queue.get()
+    62                                                   # TODO: Using CPU time? Check in on time.time()? Want wall clock time
+    63                                                   # Scheduler.logger.debug("Crunching on ({0}, {1})".format(work.low, work.high))
+    64                                                   # Keeping track of RMSE along the way
+    65         1          7.0      7.0      0.0          now = time.time()
+    66         1          1.0      1.0      0.0          nnz_ctr = 0
+    67         1          1.0      1.0      0.0          total = 0
+    68                                                   # Mark the low and high
+    69     17772       9987.0      0.6      0.0          for j in range(work.low, work.high):
+    70     17771      33021.0      1.9      0.0              hj = self.h[:, j]  # TODO: Nice syntax might be hiding performance
+    71 100498278   54621203.0      0.5      1.5              for i_iter in range(self.a_csc.indptr[j], self.a_csc.indptr[j + 1]):
+    72 100480507   99350878.0      1.0      2.6                  i = self.a_csc.indices[i_iter]
+    73                                                           # Get the respective entries
+    74 100480507   88002313.0      0.9      2.3                  wi: np.ndarray = self.w[i]
+    75 100480507   78620062.0      0.8      2.1                  aij = self.a_csc.data[i_iter]
+    76                                                           # Error = [(Wi • Hj) - Aij]
+    77 100480507  310555115.0      3.1      8.3                  err = aij - np.dot(wi, hj)
+    78 100480507  225320370.0      2.2      6.0                  np.copyto(self.tmp, wi)  # Temp stored for wi to be replaced gracefully
+    79                                                           # Descent
+    80                                                           # Wi -= lrate * (err*Hj + lambda*Wi)
+    81 100480507  696947487.0      6.9     18.5                  wi -= self.p.alpha * (err * hj + self.p.lamda * wi)
+    82                                                           # Hj -= lrate * (err*tmp + lambda*Hj);
+    83 100480507  702473099.0      7.0     18.7                  hj -= self.p.alpha * (err * self.tmp + self.p.lamda * hj)
+    84                                                           # Calculate RMSE
+    85 100480507  387235636.0      3.9     10.3                  test_wi = wi * np.sqrt(self.normalizer)
+    86 100480507  328282680.0      3.3      8.7                  test_hj = hj * np.sqrt(self.normalizer)
+    87 100480507  324183410.0      3.2      8.6                  err = aij - np.dot(test_wi, test_hj)  # (yi' - yi)
+    88 100480507  329956159.0      3.3      8.8                  term = np.power(err, 2)  # (yi' - yi)^2
+    89 100480507   74245684.0      0.7      2.0                  total += term  # Σ_{i=1}^{n} (yi' - yi)^2
+    90                                                           # Note the count of the nnz
+    91 100480507   58970948.0      0.6      1.6                  nnz_ctr += 1
+    92                                                   # self.send(work)
+    93                                                   # a: csc_matrix = self.a_csc[:, work.low:work.high]
+    94                                                   # for i, j in zip(a.nonzero()):
+    95                                                   #     # Get the respective entries
+    96                                                   #     wi: np.ndarray = self.w[i]
+    97                                                   #     hj: np.ndarray = self.w[i]
+    98                                                   #     aij = a[i, j]
+    99                                                   #     # Error = [(Wi • Hj) - Aij]
+   100                                                   #     err = aij - np.dot(wi, hj)
+   101                                                   #     np.copyto(self.tmp, wi)  # Temp stored for wi to be replaced gracefully
+   102                                                   #     # Descent
+   103                                                   #     # Wi -= lrate * (err*Hj + lambda*Wi)
+   104                                                   #     wi -= self.p.alpha * (err * hj + self.p.lamda * wi)
+   105                                                   #     # Hj -= lrate * (err*tmp + lambda*Hj);
+   106                                                   #     hj -= self.p.alpha * (err * self.tmp + self.p.lamda * hj)
+   107                                                   #     # Calculate RMSE
+   108                                                   #     test_wi = wi * np.sqrt(self.normalizer)
+   109                                                   #     test_hj = hj * np.sqrt(self.normalizer)
+   110                                                   #     err = aij - np.dot(test_wi, test_hj)  # (yi' - yi)
+   111                                                   #     term = np.power(err, 2)  # (yi' - yi)^2
+   112                                                   #     total += term  # Σ_{i=1}^{n} (yi' - yi)^2
+   113                                                   #     # Note the count of the nnz
+   114                                                   #     nnz_ctr += 1
+   115                                                   # TODO: Return vector instead
+   116                                                   # id = ray.put(self.h)
+   117         1        291.0    291.0      0.0          print("Done in {0}s".format(time.time() - now))
+   118         1          0.0      0.0      0.0          return total, nnz_ctr
+
+
+Process finished with exit code 0
