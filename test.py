@@ -75,14 +75,12 @@ class Scheduler(object):
                 aij = self.a_csc.data[i_iter]
                 # Error = [(Wi • Hj) - Aij]
                 err = aij - np.dot(wi, hj)
-                # np.copyto(self.tmp, wi)  # Temp stored for wi to be replaced gracefully
-                for kk in range(self.p.k):
-                    # Descent
-                    tmp = wi[kk]
-                    # Wi -= lrate * (err*Hj + lambda*Wi)
-                    self.w[i, kk] -= self.p.alpha * (err * hj[kk] + self.p.lamda * wi[kk])
-                    # Hj -= lrate * (err*tmp + lambda*Hj);
-                    self.h[kk, j] -= self.p.alpha * (err * tmp + self.p.lamda * hj[kk])
+                # Descent
+                np.copyto(self.tmp, wi)  # Temp stored for wi to be replaced gracefully
+                # Wi -= lrate * (err*Hj + lambda*Wi)
+                self.w[i] -= self.p.alpha * (err * hj + self.p.lamda * wi)
+                # Hj -= lrate * (err*tmp + lambda*Hj);
+                self.h[:, j] -= self.p.alpha * (err * self.tmp + self.p.lamda * hj)
                 # Note the count of the nnz
                 nnz_ctr += self.p.k
             # # Calculate RMSE
