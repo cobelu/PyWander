@@ -3,6 +3,7 @@
 data/
 
 # Crap
+.vscode/
 .idea/
 .DS_Store
 

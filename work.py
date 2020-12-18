@@ -3,21 +3,27 @@ from typing import List
 import numpy as np
 from ray.util.queue import Queue
 
-from chunk import Chunk
+from partition import Partition
 
 
 class Work:
-    def __init__(self, chunks: List[Chunk], hs: np.ndarray):
-        self.chunks = chunks
-        self.hs = hs
+    def __init__(self, ptn: Partition, h: np.ndarray, prev: int):
+        self.ptn = ptn
+        self.h = h
+        self.prev = prev
+
+    def low(self) -> int:
+        return self.ptn.low
+
+    def high(self) -> int:
+        return self.ptn.high
+
+    def dim(self) -> int:
+        return self.ptn.dim()
 
     @staticmethod
-    def initial(self, i: int, k: int, cols: int, shuffled=False):
-        # Create the initial chunk and split it
-        chunks = Chunk(0, cols).splits(i, shuffled=shuffled)
-        # Normalize
-        coeff = 1 / np.sqrt(self.p.k)
-        # Make enough h vectors for each Chunk
-        hs = coeff * np.ndarray([Chunk.rng.random(
-            (k, chunks[idx].dim())) for idx in range(i)])
-        return [Work(chunks[idx], hs[idx]) for idx in range(i)]
+    def initialize(low: int, high: int, h: np.ndarray, prev: int):
+        return Work(Partition(low, high), h, prev)
+
+    def __str__(self):
+        return "Work{" + str(self.ptn) + ", " + str(self.prev) + "}"

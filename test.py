@@ -9,7 +9,7 @@ from line_profiler import line_profiler
 from scipy.sparse import csr_matrix, csc_matrix, load_npz, coo_matrix
 
 from parameters import Parameters
-from chunk import Chunk
+from partition import Partition
 
 import atexit
 
@@ -31,8 +31,8 @@ def main():
         normalizer=normalizer,
         file=file
     )
-    scheduler = Scheduler(0, p, Chunk(0, rows))
-    total, nnz = scheduler.sgd(Chunk(0, cols))
+    scheduler = Scheduler(0, p, Partition(0, rows))
+    total, nnz = scheduler.sgd(Partition(0, cols))
     print("NNZ: {0}".format(nnz))
     print("RMSE: {0}".format(np.sqrt(total / nnz)))
 
@@ -41,7 +41,7 @@ class Scheduler(object):
     logging.basicConfig(level=logging.DEBUG)
     logger = logging.getLogger(__name__)
 
-    def __init__(self, i: int, p: Parameters, work: Chunk):
+    def __init__(self, i: int, p: Parameters, work: Partition):
         Scheduler.logger.debug("Got file:" + p.file)
         self.i = i
         self.p = p
@@ -63,7 +63,7 @@ class Scheduler(object):
         self.tmp: np.ndarray = np.zeros(self.p.k)
 
     @profile
-    def sgd(self, work: Chunk) -> (float, int):
+    def sgd(self, work: Partition) -> (float, int):
         # work = self.queue.get()
         # TODO: Using CPU time? Check in on time.time()? Want wall clock time
         # Scheduler.logger.debug("Crunching on ({0}, {1})".format(work.low, work.high))
@@ -135,14 +135,14 @@ class Scheduler(object):
             raise Exception("oops")
         return sparse_matrix
 
-    def send(self, works: List[Chunk]):
+    def send(self, works: List[Partition]):
         workers = self.p.n
         another_worker = (self.i + 1 + np.random.randint(workers - 1)) % workers
         # return self.workers[another_worker].dump(work)
         for work in works:
             self.queues[another_worker].put(work)
 
-    def dump(self, works: List[Chunk]) -> bool:
+    def dump(self, works: List[Partition]) -> bool:
         for work in works:
             self.queue.put(work)
         return True
