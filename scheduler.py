@@ -12,15 +12,16 @@ from scipy.sparse import csr_matrix, csc_matrix, load_npz
 from sklearn.utils import shuffle
 
 from parameters import Parameters
-from work import Work
+from chunk import Chunk
 
 
 @ray.remote
 class Scheduler(object):
+    rng = np.random.default_rng()
     logging.basicConfig(level=logging.DEBUG)
     logger = logging.getLogger(__name__)
 
-    def __init__(self, i: int, p: Parameters, work: Work, queues: List[Queue]):
+    def __init__(self, i: int, p: Parameters, work: Chunk, queues: List[Queue]):
         Scheduler.logger.debug("Got file:" + p.file)
         self.i = i
         self.p = p
@@ -29,17 +30,15 @@ class Scheduler(object):
         self.normalizer = p.normalizer
         self.a_csc: csc_matrix = self.load(p.file)[work.low:work.high].tocsc()
         Scheduler.logger.debug("Loading {0}".format(work))
-        # Scheduler.logger.debug("Converted CSR to CSC")
+        # Get the shape to know how large the parameter matrices
         shape = self.a_csc.shape
-        rows: int = shape[0]
+        rows: int = shape[0]  # Number of rows ON THE MACHINE
         cols: int = shape[1]
         # Scheduler.logger.debug("Size of CSC: ({0}, {1})".format(shape[0], shape[1]))
         # self.a_csc = shuffle(self.a_csc)  # TODO: Shuffle
         # Data to be found
-        rng = np.random.default_rng()
-        self.w: np.ndarray = (1 / np.sqrt(self.p.k)) * rng.random((rows, self.p.k))
-        self.h: np.ndarray = (1 / np.sqrt(self.p.k)) * rng.random((self.p.k, cols))
-        self.tmp: np.ndarray = np.zeros(self.p.k)
+        self.w: np.ndarray = (1 / np.sqrt(self.p.k)) * Scheduler.rng.random((rows, self.p.k), dtype=np.float64)
+        self.tmp: np.ndarray = np.zeros(self.p.k, dtype=np.float64)  # Pre-allocated array for computation
 
     @ray.method(num_returns=3)
     def sgd(self, h=None) -> (float, int, np.ndarray):
@@ -59,8 +58,9 @@ class Scheduler(object):
             hj = self.h[:, j]  # TODO: Nice syntax might be hiding performance
             for i_iter in range(self.a_csc.indptr[j], self.a_csc.indptr[j + 1]):
                 i = self.a_csc.indices[i_iter]
-                # Get the respective entries
-                wi: np.ndarray = self.w[i]
+                # Get the W row
+                wi = self.w[i]
+                # Get the respective entry
                 aij = self.a_csc.data[i_iter]
                 # Error = [(Wi • Hj) - Aij]
                 err = aij - np.dot(wi, hj)
@@ -80,9 +80,8 @@ class Scheduler(object):
                 nnz_ctr += 1
         self.send([work])
         # TODO: Return vector instead
-        id = ray.put(self.h)
         Scheduler.logger.debug("Worker {0} done in {1}".format(self.i, time.time() - start))
-        return total, nnz_ctr, id
+        return total, nnz_ctr
 
     def load(self, filename: str) -> csr_matrix:
         Scheduler.logger.debug("Loading " + filename)
@@ -96,12 +95,12 @@ class Scheduler(object):
             raise Exception("oops")
         return sparse_matrix
 
-    def send(self, works: List[Work]):
+    def send(self, works: List[Chunk]):
         for work in works:
             self.rand_queue().put(work)
         return
 
-    def dump(self, works: List[Work]) -> bool:
+    def dump(self, works: List[Chunk]) -> bool:
         for work in works:
             self.queue().put(work)
         return True
@@ -119,14 +118,15 @@ class Scheduler(object):
         return self.i
 
     @staticmethod
-    def load_dims(filename: str) -> (int, int, float):
+    def load_dims(filename: str) -> (int, int, int, float):
         Scheduler.logger.debug("Getting dimensions of {0}".format(filename))
         try:
             sparse_matrix: csr_matrix = load_npz(filename)
             shape = sparse_matrix.shape
             normalizer = sparse_matrix.max()
+            nnz = sparse_matrix.nnz
         except IOError:
             Scheduler.logger.warning("Could not find file!")
             shape = (0, 0)
             normalizer = 1
-        return shape[0], shape[1], normalizer
+        return shape[0], shape[1], nnz, normalizer

@@ -12,7 +12,7 @@ from ray.util.queue import Queue
 from parameters import Parameters
 from scheduler import Scheduler
 from timeout import alarm_handler, TimeoutException
-from work import Work
+from chunk import Chunk
 
 
 def main():
@@ -24,17 +24,17 @@ def main():
     duration = 1
     workers = 4
     file = "data/netflix.npz"
-    rows, cols, normalizer = Scheduler.load_dims(file)
+    rows, cols, nnz, normalizer = Scheduler.load_dims(file)
+    print("Loaded {0} nz values".format(nnz))
     p = Parameters(sync, workers, duration, k, alpha, beta, lamda, normalizer, file)
 
     ray.init()
-    row_works = Work(0, rows).splits(workers, True)
-    col_works = Work(0, cols).splits(workers, True)
+    row_chunks = Chunk(0, rows).splits(workers, True)
+    col_chunks = Chunk(0, cols).splits(workers, True)
     hs = [None for _ in range(workers)]
     queues = [Queue() for _ in range(workers)]
-    schedulers = [Scheduler.remote(i, p, row_works[i], queues) for i in range(workers)]
-
-    dumpeds = [schedulers[i].dump.remote([col_works[i]]) for i in range(workers)]
+    schedulers = [Scheduler.remote(i, p, row_chunks[i], queues) for i in range(workers)]
+    dumpeds = [schedulers[i].dump.remote([col_chunks[i]]) for i in range(workers)]
     ray.wait(dumpeds, num_returns=workers)
 
     total = 0
@@ -56,18 +56,17 @@ def main():
             print("NNZ: {0}".format(nnz))
             print("RMSE: {0}".format(np.sqrt(total/nnz)))
     else:
+        signal.signal(signal.SIGALRM, alarm_handler)
+        signal.alarm(duration)
         while True:
-            schedulers = [Scheduler.remote(file, w) for w in row_works]
-            signal.signal(signal.SIGALRM, alarm_handler)
-            signal.alarm(duration)
             try:
-                row_works = [schedulers[i].sgd.remote(row_works[i], None) for i in range(len(schedulers))]
+                row_chunks = [schedulers[i].sgd.remote(row_chunks[i], None) for i in range(len(schedulers))]
             except TimeoutException:
                 print("Timeout")
             finally:
                 # Reset alarm clock
                 signal.alarm(0)
-
+    # Shut it down
     ray.shutdown()
 
 
