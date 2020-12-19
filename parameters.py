@@ -4,8 +4,8 @@ class Parameters:
 
     """
 
-    def __init__(self, sync: bool, n: int, d: int, k: int, alpha: float, beta: float, lamda: float,
-                 ptns: int, report: int, normalizer: float, rows: int, cols: int, nnz: int, file: str):
+    def __init__(self, sync: bool, n: int, d: int, k: int, alpha: float,
+                 beta: float, lamda: float, ptns: int, report: int):
         """
         Initializes an instance of Parameters
 
@@ -27,8 +27,3 @@ class Parameters:
         self.lamda = lamda
         self.ptns = ptns
         self.report = report
-        self.normalizer = normalizer
-        self.rows = rows
-        self.cols = cols
-        self.nnz = nnz
-        self.file = file

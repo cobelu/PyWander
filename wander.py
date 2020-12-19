@@ -34,16 +34,14 @@ def main():
     sync = args.sync
     duration = args.duration
     workers = args.workers
-    file = args.filename
-    rows, cols, nnz, normalizer = Worker.load_dims(file)
-    p = Parameters(sync, workers, duration, k, alpha, beta, lamda, ptns, report, normalizer, rows, cols, nnz, file)
+    p = Parameters(sync, workers, duration, k, alpha, beta, lamda, ptns, report)
 
     # Go do stuff with Ray
     ray.init()
     if args.sync:
-        SyncManager(p).run()
+        SyncManager(p, args.filename).run()
     else:
-        AsyncManager(p).run()
+        AsyncManager(p, args.filename).run()
     ray.shutdown()
 
 

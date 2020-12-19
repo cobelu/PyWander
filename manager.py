@@ -1,7 +1,10 @@
 from typing import List
 
 import numpy as np
+import ray
+import time
 from ray.util.queue import Queue
+from scipy.sparse import csr_matrix, load_npz
 
 from parameters import Parameters
 from partition import Partition
@@ -9,69 +12,84 @@ from worker import Worker
 
 
 class Manager:
-    def __init__(self, p: Parameters):
+    def __init__(self, p: Parameters, filename: str):
         self.p = p
         self.total = 0
         self.nnz = 0
         self.pending = Queue()
         self.complete = Queue()
-        row_ptns = self.handouts()
-        self.workers = [Worker.remote(i, p, self.pending, self.complete, row_ptns[i])
+        self.results = Queue()
+
+        self.num_col_parts = self.p.n * self.p.ptns
+        a_csr, rows, cols, normalizer = self.load(filename)
+        row_ptns = Partition(0, rows).splits(self.p.n, False)
+
+        self.workers = [Worker.remote(i, p, self.pending, self.complete,
+                                  self.results, a_csr, normalizer, row_ptns[i])
                         for i in range(self.p.n)]
+        [worker.run.remote() for worker in self.workers]
 
     def run(self):
         raise NotImplementedError()
 
-    def handouts(self) -> List[Partition]:
-        return Partition(0, self.p.rows).splits(self.p.n, False)
-
     def print_rmse(self):
-        print("NNZ: {0}".format(self.nnz))
-        print("RMSE: {0}".format(np.sqrt(self.total / self.nnz)))
+        print("\tNNZ: {0}".format(self.nnz))
+        rmse = np.sqrt(self.total / self.nnz) if self.nnz > 0 else np.NaN
+        print("\tRMSE: {0}".format(rmse))
+
+    def load(self, filename: str) -> csr_matrix:
+        print("Loading " + filename)
+        try:
+            a_csr: csr_matrix = load_npz(filename)[0:10000]
+            shape = a_csr.shape
+            normalizer = a_csr.max()
+            # Normalize per: https://stackoverflow.com/a/62690439
+            a_csr /= normalizer
+            print("Loaded {0}".format(filename))
+        except IOError:
+            print("Could not find file!")
+            raise Exception("oops")
+        return a_csr, shape[0], shape[1], normalizer
+
+    def shutdown(self):
+        [ray.kill(worker) for worker in self.workers]
 
 
 class SyncManager(Manager):
     def run(self):
         # Run every iteration
         for step in range(1, self.p.d + 1):
-            # Place initial work on queue
-            for i in range(len(self.workers)):
-                self.pending.put(self.complete.get())
-            # Put sentinel work on queue
-            for i in range(len(self.workers)):
-                self.pending.put(None)
             print("Iteration: {0}".format(step))
-            # Start calculating
-            [worker.run.remote() for worker in self.workers]
-            while not self.pending.empty():
-                pass
-            for worker in self.workers:
-                total, nnz = worker.update()
+            # Place initial work on queue
+            for i in range(self.num_col_parts):
+                self.pending.put(self.complete.get())
+            for i in range(self.num_col_parts):
+                total, nnz = self.results.get()
                 self.total += total
                 self.nnz += nnz
             if step % self.p.report == 0:
                 self.print_rmse()
-        # Print final RMSE
+        print('FINAL')
         self.print_rmse()
+        self.shutdown()
 
 
 class AsyncManager(Manager):
     def run(self):
-        for i in range(len(self.workers)):
+        for i in range(self.num_col_parts):
             self.pending.put(self.complete.get())
-        pass
-        """
-        for h in self.hs:
-            self.pending.put(h)
+        start = time.time()
         while True:
-            schedulers = [Scheduler.remote(file, w) for w in row_works]
-            signal.signal(signal.SIGALRM, alarm_handler)
-            signal.alarm(duration)
-            try:
-                row_works = [schedulers[i].sgd.remote(row_works[i], None) for i in range(len(schedulers))]
-            except TimeoutException:
-                print("Timeout")
-            finally:
-                # Reset alarm clock
-                signal.alarm(0)
-        """
+            time.sleep(self.p.report)
+            while not self.results.empty():
+                total, nnz = self.results.get()
+                self.total += total
+                self.nnz += nnz
+            elapsed = time.time() - start
+            if elapsed > self.p.d:
+                break
+            print('Elapsed:', elapsed)
+            self.print_rmse()
+        print('FINAL')
+        self.print_rmse()
+        self.shutdown()
