@@ -40,7 +40,7 @@ class Manager:
     def load(self, filename: str) -> csr_matrix:
         print("Loading " + filename)
         try:
-            a_csr: csr_matrix = load_npz(filename)[0:10000]
+            a_csr: csr_matrix = load_npz(filename)
             shape = a_csr.shape
             normalizer = a_csr.max()
             # Normalize per: https://stackoverflow.com/a/62690439
