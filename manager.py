@@ -57,7 +57,7 @@ class Manager:
 
 class SyncManager(Manager):
     def run(self):
-        # Run every iteration
+        start = time.time()
         for step in range(1, self.p.d + 1):
             print("Iteration: {0}".format(step))
             # Place initial work on queue
@@ -72,13 +72,14 @@ class SyncManager(Manager):
         print('FINAL')
         self.print_rmse()
         self.shutdown()
+        print('runtime:', time.time() - start)
 
 
 class AsyncManager(Manager):
     def run(self):
+        start = time.time()
         for i in range(self.num_col_parts):
             self.pending.put(self.complete.get())
-        start = time.time()
         while True:
             time.sleep(self.p.report)
             while not self.results.empty():
@@ -93,3 +94,4 @@ class AsyncManager(Manager):
         print('FINAL')
         self.print_rmse()
         self.shutdown()
+        print('runtime:', time.time() - start)
