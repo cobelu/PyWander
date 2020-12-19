@@ -8,11 +8,12 @@ from scipy.sparse import csr_matrix, load_npz
 
 from parameters import Parameters
 from partition import Partition
+from util import load, load_with_features
 from worker import Worker
 
 
 class Manager:
-    def __init__(self, p: Parameters, filename: str):
+    def __init__(self, p: Parameters):
         self.p = p
         self.total = 0
         self.nnz = 0
@@ -21,11 +22,11 @@ class Manager:
         self.results = Queue()
 
         self.num_col_parts = self.p.n * self.p.ptns
-        a_csr, rows, cols, normalizer = self.load(filename)
+        _, rows, cols, normalizer = load_with_features(p.filename)
         row_ptns = Partition(0, rows).splits(self.p.n, False)
 
         self.workers = [Worker.remote(i, p, self.pending, self.complete,
-                                  self.results, a_csr, normalizer, row_ptns[i])
+                                  self.results, normalizer, row_ptns[i])
                         for i in range(self.p.n)]
         [worker.run.remote() for worker in self.workers]
 
@@ -36,20 +37,6 @@ class Manager:
         print("\tNNZ: {0}".format(self.nnz))
         rmse = np.sqrt(self.total / self.nnz) if self.nnz > 0 else np.NaN
         print("\tRMSE: {0}".format(rmse))
-
-    def load(self, filename: str) -> csr_matrix:
-        print("Loading " + filename)
-        try:
-            a_csr: csr_matrix = load_npz(filename)
-            shape = a_csr.shape
-            normalizer = a_csr.max()
-            # Normalize per: https://stackoverflow.com/a/62690439
-            a_csr /= normalizer
-            print("Loaded {0}".format(filename))
-        except IOError:
-            print("Could not find file!")
-            raise Exception("oops")
-        return a_csr, shape[0], shape[1], normalizer
 
     def shutdown(self):
         [ray.kill(worker) for worker in self.workers]

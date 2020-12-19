@@ -13,6 +13,7 @@ from sklearn.utils import shuffle
 
 from parameters import Parameters
 from partition import Partition
+from util import load
 from work import Work
 
 
@@ -23,9 +24,9 @@ class Worker(object):
     logger = logging.getLogger(__name__)
 
     def __init__(self, worker_id: int, p: Parameters, pending: Queue,
-            complete: Queue, results: Queue, a_csr: csr_matrix,
+            complete: Queue, results: Queue,
             normalizer: float, row_partition: Partition):
-        Worker.logger.debug("Got partition: " + row_partition.__str__())
+        Worker.logger.debug("Got partition: {0}".format(row_partition))
         # Args
         self.worker_id = worker_id
         self.p = p
@@ -37,8 +38,7 @@ class Worker(object):
         self.nnz = 0
         # Sparse data is loaded as a CSR, sliced, converted to CSC, and shuffled (if desired)
         self.normalizer = normalizer
-        self.a_csc = a_csr[row_partition.low:row_partition.high].tocsc()
-        #self.a_csc: csc_matrix = self.load(p.file)[row_partition.low:row_partition.high].tocsc()
+        self.a_csc: csc_matrix = load(p.filename)[row_partition.low:row_partition.high].tocsc()
         # self.a_csc = shuffle(self.a_csc)  # TODO: Shuffle
         # Get the shape to know how large the parameter matrices
         shape = self.a_csc.shape
@@ -68,7 +68,7 @@ class Worker(object):
             if self.p.n > 1 and work.prev == self.worker_id:
                 self.pending.put(work)
                 continue
-            work = self.sgd(work) #need to return new worker, it is immutable
+            work = self.sgd(work)  # Need to return new worker, it is immutable
             self.results.put((self.total, self.nnz))
             self.total = 0
             self.nnz = 0
@@ -94,7 +94,7 @@ class Worker(object):
                 # Get the respective entry
                 aij = self.a_csc.data[i_iter]
                 # Error = [(Wi • Hj) - Aij]
-                err = aij - np.dot(wi, hj)
+                err = np.dot(wi, hj) - aij
                 np.copyto(self.tmp, wi)  # Temp stored for wi to be replaced gracefully
                 # Descent
                 # Wi -= lrate * (err*Hj + lambda*Wi)
