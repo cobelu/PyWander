@@ -20,12 +20,13 @@ from work import Work
 @ray.remote
 class Worker(object):
     rng = np.random.default_rng()
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.WARNING)
     logger = logging.getLogger(__name__)
 
-    def __init__(self, worker_id: int, p: Parameters, pending: Queue,
-            complete: Queue, results: Queue,
-            normalizer: float, row_partition: Partition):
+    def __init__(self, worker_id: int, p: Parameters, pending: Queue, complete: Queue, results: Queue,
+                 normalizer: float, row_partition: Partition):
+        if p.verbose:
+            Worker.logger.setLevel(logging.DEBUG)
         Worker.logger.debug("Got partition: {0}".format(row_partition))
         # Args
         self.worker_id = worker_id
@@ -46,7 +47,7 @@ class Worker(object):
         cols: int = shape[1]
         Worker.logger.debug("Size of CSC: ({0}, {1})".format(shape[0], shape[1]))
         # Create the arrays for computation
-        self.w: np.ndarray = 1 / np.sqrt(self.p.k) * self.random((rows, self.p.k))
+        self.w: np.ndarray = 1 / np.sqrt(self.p.k) * Worker.random((rows, self.p.k))
         self.tmp: np.ndarray = np.empty(self.p.k, dtype=np.float64)  # Pre-allocated
         # Data to be found
         # TODO: double check this partitioning
@@ -57,7 +58,7 @@ class Worker(object):
         for i in range(col_range // part_range):
             low = col_range * self.worker_id + part_range * i
             high = low + part_range
-            h: np.ndarray = 1 / np.sqrt(self.p.k) * self.random((self.p.k, cols))
+            h: np.ndarray = 1 / np.sqrt(self.p.k) * Worker.random((self.p.k, cols))
             self.complete.put(Work.initialize(low, high, h, -1))
 
     @ray.method(num_returns=0)
@@ -92,8 +93,8 @@ class Worker(object):
                 # Get the respective entry
                 aij = self.a_csc.data[i_iter]
                 # Error = [(Wi • Hj) - Aij]
-                err = aij - np.dot(wi, hj) # TODO: is this backwards?
-                #TODO: is it possible to do without the copy?
+                err = np.dot(wi, hj) - aij
+                # TODO: is it possible to do without the copy?
                 np.copyto(self.tmp, wi)  # Temp stored for wi to be replaced gracefully
                 # Descent
                 # Wi -= lrate * (err*Hj + lambda*Wi)
@@ -111,3 +112,7 @@ class Worker(object):
         stop = time.time()
         Worker.logger.debug("Worker {0} done in {1}".format(self.worker_id, stop - start))
         return Work(work.ptn, h, self.worker_id)
+
+    @staticmethod
+    def random(shape: (int, int)) -> np.ndarray:
+        return Worker.rng.random(shape, dtype=np.float64)

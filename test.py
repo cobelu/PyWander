@@ -57,7 +57,7 @@ class Scheduler(object):
         # Scheduler.logger.debug("Size of CSC: ({0}, {1})".format(shape[0], shape[1]))
         # self.a_csc = shuffle(self.a_csc)  # TODO: Shuffle
         # Data to be found
-        rng = np.random.default_rng()
+        rng = np.random
         self.w: np.ndarray = (1 / np.sqrt(self.p.k)) * rng.random((rows, self.p.k))
         self.h: np.ndarray = (1 / np.sqrt(self.p.k)) * np.asfortranarray(rng.random((self.p.k, cols)))
         self.tmp: np.ndarray = np.zeros(self.p.k)
