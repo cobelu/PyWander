@@ -94,7 +94,7 @@ class Worker(object):
                 # Get the respective entry
                 aij = self.a_csc.data[i_iter]
                 # Error = [(Wi • Hj) - Aij]
-                err = np.dot(wi, hj) - aij
+                err = aij - np.dot(wi, hj)
                 np.copyto(self.tmp, wi)  # Temp stored for wi to be replaced gracefully
                 # Descent
                 # Wi -= lrate * (err*Hj + lambda*Wi)
