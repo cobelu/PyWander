@@ -71,8 +71,8 @@ class SyncManager(Manager):
                 self.print_rmse()
         print('FINAL')
         self.print_rmse()
-        self.shutdown()
         print('runtime:', time.time() - start)
+        self.shutdown()
 
 
 class AsyncManager(Manager):
@@ -93,5 +93,5 @@ class AsyncManager(Manager):
             self.print_rmse()
         print('FINAL')
         self.print_rmse()
-        self.shutdown()
         print('runtime:', time.time() - start)
+        self.shutdown()
