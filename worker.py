@@ -47,8 +47,11 @@ class Worker(object):
         Worker.logger.debug("Size of CSC: ({0}, {1})".format(shape[0], shape[1]))
         # Create the arrays for computation
         self.w: np.ndarray = 1 / np.sqrt(self.p.k) * self.random((rows, self.p.k))
-        self.tmp: np.ndarray = np.zeros(self.p.k, dtype=np.float64)  # Pre-allocated
+        self.tmp: np.ndarray = np.empty(self.p.k, dtype=np.float64)  # Pre-allocated
         # Data to be found
+        # TODO: double check this partitioning
+        #   -it might be off by one (either one too many/too few) partitions
+        #   -also it might be off if the HIGH part of the range is inclusive/exclusive
         col_range = cols // self.p.n
         part_range = col_range // self.p.ptns
         for i in range(col_range // part_range):
@@ -56,10 +59,6 @@ class Worker(object):
             high = low + part_range
             h: np.ndarray = 1 / np.sqrt(self.p.k) * self.random((self.p.k, cols))
             self.complete.put(Work.initialize(low, high, h, -1))
-
-    @ray.method(num_returns=2)
-    def update(self):
-        return self.total, self.nnz
 
     @ray.method(num_returns=0)
     def run(self):
@@ -79,14 +78,13 @@ class Worker(object):
         return
 
     def sgd(self, work: Work):
-        # TODO: Using CPU time? Check in on time.time()? Want wall clock time
         start = time.time()
         Worker.logger.debug("Crunching on {0}".format(work))
         # Scheduler.logger.debug("Crunching on ({0}, {1})".format(work.low, work.high))
         # Mark the low and high
         h = np.copy(work.h)
         for j in range(work.dim()):
-            hj = h[:, j]  # TODO: Nice syntax might be hiding performance
+            hj = h[:, j]
             for i_iter in range(self.a_csc.indptr[j], self.a_csc.indptr[j + 1]):
                 i = self.a_csc.indices[i_iter]
                 # Get the W row
@@ -94,7 +92,8 @@ class Worker(object):
                 # Get the respective entry
                 aij = self.a_csc.data[i_iter]
                 # Error = [(Wi • Hj) - Aij]
-                err = aij - np.dot(wi, hj)
+                err = aij - np.dot(wi, hj) # TODO: is this backwards?
+                #TODO: is it possible to do without the copy?
                 np.copyto(self.tmp, wi)  # Temp stored for wi to be replaced gracefully
                 # Descent
                 # Wi -= lrate * (err*Hj + lambda*Wi)
@@ -112,9 +111,3 @@ class Worker(object):
         stop = time.time()
         Worker.logger.debug("Worker {0} done in {1}".format(self.worker_id, stop - start))
         return Work(work.ptn, h, self.worker_id)
-
-    def ready(self) -> int:
-        return self.worker_id
-
-    def random(self, shape: (int, int)) -> np.ndarray:
-        return Worker.rng.random(shape, dtype=np.float64)
