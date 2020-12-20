@@ -16,6 +16,7 @@ def main():
     parser.add_argument('-l', '--lamda', default=1.0, type=float)
     parser.add_argument('-d', '--duration', default=10, type=int)
     parser.add_argument('-k', '--latent', default=100, type=int)
+    parser.add_argument('-n', '--normalize', action='store_true')
     parser.add_argument('-p', '--partitions', default=1, type=int)
     parser.add_argument('-r', '--report', default=1, type=int)
     parser.add_argument('-w', '--workers', default=1, type=int)
@@ -35,8 +36,9 @@ def main():
     duration = args.duration
     workers = args.workers
     filename = args.filename
+    normalize = args.normalize
     verbose = args.verbose
-    p = Parameters(sync, workers, duration, k, alpha, beta, lamda, ptns, report, filename, verbose)
+    p = Parameters(sync, workers, duration, k, alpha, beta, lamda, ptns, report, filename, normalize, verbose)
 
     # Go do stuff with Ray
     ray.init()

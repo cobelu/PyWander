@@ -15,19 +15,22 @@ from worker import Worker
 class Manager:
     def __init__(self, p: Parameters):
         self.p = p
-        self.total = 0
         self.nnz = 0
+        self.rmse = 0
         self.pending = Queue()
         self.complete = Queue()
         self.results = Queue()
 
         self.num_col_parts = self.p.n * self.p.ptns
-        _, rows, cols, normalizer = load_with_features(p.filename)
-        row_ptns = Partition(0, rows).splits(self.p.n, False)
+        a_csr = load(self.p.filename, self.p.normalize)
+        row_ptns = Partition(0, a_csr.shape[0]).splits(self.p.n, False)
 
-        self.workers = [Worker.remote(i, p, self.pending, self.complete,
-                                  self.results, normalizer, row_ptns[i])
-                        for i in range(self.p.n)]
+        self.workers = []
+        for i in range(self.p.n):
+            row_partition = row_ptns[i]
+            a_csc = a_csr[row_partition.low:row_partition.high].tocsc()
+            self.workers.append(Worker.remote(i, p, self.pending, self.complete,
+                                self.results, a_csc, row_partition))
         [worker.run.remote() for worker in self.workers]
 
     def run(self):
@@ -35,7 +38,7 @@ class Manager:
 
     def print_rmse(self):
         print("\tNNZ: {0}".format(self.nnz))
-        rmse = np.sqrt(self.total / self.nnz) if self.nnz > 0 else np.NaN
+        rmse = np.sqrt(self.rmse) if self.nnz > 0 else np.NaN
         print("\tRMSE: {0}".format(rmse))
 
     def shutdown(self):
@@ -51,9 +54,11 @@ class SyncManager(Manager):
             for i in range(self.num_col_parts):
                 self.pending.put(self.complete.get())
             for i in range(self.num_col_parts):
-                total, nnz = self.results.get()
-                self.total += total
+                nnz, total = self.results.get()
+                #https://stats.stackexchange.com/questions/221826/is-it-possible-to-compute-rmse-iteratively
+                #double check this
                 self.nnz += nnz
+                self.rmse = ((self.nnz - nnz) / self.nnz) * self.rmse + total / self.nnz
             if step % self.p.report == 0:
                 self.print_rmse()
         print('FINAL')
@@ -68,11 +73,13 @@ class AsyncManager(Manager):
         for i in range(self.num_col_parts):
             self.pending.put(self.complete.get())
         while True:
-            time.sleep(self.p.report)
             while not self.results.empty():
-                total, nnz = self.results.get()
-                self.total += total
+                nnz, total = self.results.get()
+                #https://stats.stackexchange.com/questions/221826/is-it-possible-to-compute-rmse-iteratively
+                #double check this
                 self.nnz += nnz
+                self.rmse = ((self.nnz - nnz) / self.nnz) * self.rmse + total / self.nnz
+            time.sleep(self.p.report)
             elapsed = time.time() - start
             if elapsed > self.p.d:
                 break
