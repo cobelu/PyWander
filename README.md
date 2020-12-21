@@ -12,3 +12,6 @@
   * `pip install -r requirements.txt`
 * Default:
   * `python wander.py data/netflix.npz`
+  * `[sudo] ray up support/bsn.yaml`
+* Network Troubleshooting:
+  * `sudo netstat -peanut | grep ":8265"`

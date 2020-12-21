@@ -10,13 +10,15 @@ import os
 
 
 def main():
-    in_file = "/Users/cobelu/Desktop/train.csv"
-    out_file = "/Users/cobelu/Desktop/train.npz"
+    in_file = "/Users/cobelu/Documents/Research/mf/data/yahoo/ydata-ymusic-user-artist-ratings-v1_0.txt"
+    out_file = "data/yahoo.npz"
 
     # Load the file
-    df = pd.read_csv(in_file, header=None)
+    df = pd.read_csv(in_file, header=None, sep='\t')
     print(df.head())
     print("Shape:", df.shape)
+    # Make sure there are NOT negative entries
+    df = df[(df >= 0).all(1)]
     # Select the columns
     user_col = df[0]
     item_col = df[1]
@@ -40,9 +42,9 @@ def main():
     # Create the sparse matrix as a CSR
     sparse_matrix: csr_matrix = coo_matrix((ratings, (users, items)), dtype=np.float64).tocsr()
     # Save the sparse matrix
-    if not (os.path.exists(out_file)):
-        # create the directory you want to save to
-        os.mkdir(out_file)
+    # if not (os.path.exists(out_file)):
+    #     Create the directory if needed
+    #     os.mkdir(out_file)
     save_npz(out_file, sparse_matrix)
 
 
