@@ -7,10 +7,11 @@ from partition import Partition
 
 
 class Work:
-    def __init__(self, ptn: Partition, h: np.ndarray, prev: int):
+    def __init__(self, ptn: Partition, h: np.ndarray, prev: int, updates: int):
         self.ptn = ptn
         self.h = h
         self.prev = prev
+        self.updates = updates
 
     def low(self) -> int:
         return self.ptn.low
