@@ -55,8 +55,8 @@ class SyncManager(Manager):
                 self.pending.put(self.complete.get())
             for i in range(self.num_col_parts):
                 nnz, total = self.results.get()
-                #https://stats.stackexchange.com/questions/221826/is-it-possible-to-compute-rmse-iteratively
-                #double check this
+                # https://stats.stackexchange.com/questions/221826/is-it-possible-to-compute-rmse-iteratively
+                # Double check this
                 self.nnz += nnz
                 self.rmse = ((self.nnz - nnz) / self.nnz) * self.rmse + total / self.nnz
             if step % self.p.report == 0:
@@ -75,8 +75,8 @@ class AsyncManager(Manager):
         while True:
             while not self.results.empty():
                 nnz, total = self.results.get()
-                #https://stats.stackexchange.com/questions/221826/is-it-possible-to-compute-rmse-iteratively
-                #double check this
+                # https://stats.stackexchange.com/questions/221826/is-it-possible-to-compute-rmse-iteratively
+                # Double check this
                 self.nnz += nnz
                 self.rmse = ((self.nnz - nnz) / self.nnz) * self.rmse + total / self.nnz
             time.sleep(self.p.report)

@@ -7,10 +7,11 @@ from partition import Partition
 
 
 class Work:
-    def __init__(self, ptn: Partition, h: np.ndarray, prev: int):
+    def __init__(self, ptn: Partition, h: np.ndarray, prev: int, updates: int):
         self.ptn = ptn
         self.h = h
         self.prev = prev
+        self.updates = updates
 
     def low(self) -> int:
         return self.ptn.low
@@ -23,7 +24,7 @@ class Work:
 
     @staticmethod
     def initialize(low: int, high: int, h: np.ndarray, prev: int):
-        return Work(Partition(low, high), h, prev)
+        return Work(Partition(low, high), h, prev, 0)
 
     def __str__(self):
         return "Work{" + str(self.ptn) + ", " + str(self.prev) + "}"

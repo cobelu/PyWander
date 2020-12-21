@@ -16,7 +16,7 @@ def load(filename: str, normalize=False) -> csr_matrix:
     return a_csr
 
 
-def load_with_features(filename: str, normalize=True) -> (csr_matrix, int, int, float):
+def load_with_features(filename: str, normalize=False) -> (csr_matrix, int, int, float):
     a_csr = load(filename, normalize=normalize)
     shape = a_csr.shape
     normalizer = a_csr.max()

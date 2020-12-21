@@ -77,6 +77,10 @@ class Worker(object):
         total = 0.0
         nnz = 0
         h = np.copy(work.h)
+        if self.p.bold:
+            step = self.step_size(work)
+        else:
+            step = 1
         for j in range(work.dim()):
             hj = h[:, j]
             for i_iter in range(self.a_csc.indptr[j], self.a_csc.indptr[j + 1]):
@@ -91,9 +95,9 @@ class Worker(object):
                 np.copyto(self.tmp, wi)  # Temp stored for wi to be replaced gracefully
                 # Descent
                 # Wi -= lrate * (err*Hj + lambda*Wi)
-                wi -= self.p.alpha * (err * hj + self.p.lamda * wi)
+                wi -= step * self.p.alpha * (err * hj + self.p.lamda * wi)
                 # Hj -= lrate * (err*tmp + lambda*Hj);
-                hj -= self.p.alpha * (err * self.tmp + self.p.lamda * hj)
+                hj -= step * self.p.alpha * (err * self.tmp + self.p.lamda * hj)
                 # Calculate RMSE
                 # test_wi = wi * np.sqrt(self.normalizer)
                 # test_hj = hj * np.sqrt(self.normalizer)
@@ -103,7 +107,10 @@ class Worker(object):
                 nnz += 1
         stop = time.time()
         Worker.logger.debug("Worker {0} done in {1}".format(self.worker_id, stop - start))
-        return Work(work.ptn, h, self.worker_id), nnz, total
+        return Work(work.ptn, h, self.worker_id, work.updates + 1), nnz, total
+
+    def step_size(self, work: Work):
+        return self.p.lamda * 1.5 / (1.0 + self.p.beta * pow(work.updates + 1, 1.5))
 
     @staticmethod
     def random(shape: (int, int)) -> np.ndarray:
