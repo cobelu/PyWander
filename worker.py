@@ -24,7 +24,7 @@ class Worker(object):
     logger = logging.getLogger(__name__)
 
     def __init__(self, worker_id: int, p: Parameters, pending: Queue, complete: Queue, results: Queue,
-                 normalizer: float, row_partition: Partition):
+                 a_csc: csc_matrix, row_partition: Partition):
         if p.verbose:
             Worker.logger.setLevel(logging.DEBUG)
         Worker.logger.debug("Got partition: {0}".format(row_partition))
@@ -34,12 +34,7 @@ class Worker(object):
         self.pending = pending
         self.complete = complete
         self.results = results
-        # # Keeping track of RMSE along the way
-        self.total = 0
-        self.nnz = 0
-        # Sparse data is loaded as a CSR, sliced, converted to CSC, and shuffled (if desired)
-        self.normalizer = normalizer
-        self.a_csc: csc_matrix = load(p.filename)[row_partition.low:row_partition.high].tocsc()
+        self.a_csc = a_csc
         # self.a_csc = shuffle(self.a_csc)  # TODO: Shuffle
         # Get the shape to know how large the parameter matrices
         shape = self.a_csc.shape
@@ -68,10 +63,8 @@ class Worker(object):
             if self.p.n > 1 and work.prev == self.worker_id:
                 self.pending.put(work)
                 continue
-            work = self.sgd(work)  # Need to return new worker, it is immutable
-            self.results.put((self.total, self.nnz))
-            self.total = 0
-            self.nnz = 0
+            work, nnz, total = self.sgd(work)
+            self.results.put((nnz, total))
             if self.p.sync:
                 self.complete.put(work)
             else:
@@ -81,8 +74,8 @@ class Worker(object):
     def sgd(self, work: Work):
         start = time.time()
         Worker.logger.debug("Crunching on {0}".format(work))
-        # Scheduler.logger.debug("Crunching on ({0}, {1})".format(work.low, work.high))
-        # Mark the low and high
+        total = 0.0
+        nnz = 0
         h = np.copy(work.h)
         for j in range(work.dim()):
             hj = h[:, j]
@@ -105,13 +98,12 @@ class Worker(object):
                 # test_wi = wi * np.sqrt(self.normalizer)
                 # test_hj = hj * np.sqrt(self.normalizer)
                 # err = aij - np.dot(test_wi, test_hj)  # (yi' - yi)
-                term = np.power(err, 2)  # (yi' - yi)^2
-                self.total += term  # Σ_{i=1}^{n} (yi' - yi)^2
+                total += np.power(err, 2)  # Σ_{i=1}^{n} (yi' - yi)^2
                 # Note the count of the nnz
-                self.nnz += 1
+                nnz += 1
         stop = time.time()
         Worker.logger.debug("Worker {0} done in {1}".format(self.worker_id, stop - start))
-        return Work(work.ptn, h, self.worker_id)
+        return Work(work.ptn, h, self.worker_id), nnz, total
 
     @staticmethod
     def random(shape: (int, int)) -> np.ndarray:
