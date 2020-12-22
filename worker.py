@@ -49,12 +49,11 @@ class Worker(object):
         #   -it might be off by one (either one too many/too few) partitions
         #   -also it might be off if the HIGH part of the range is inclusive/exclusive
         col_range = cols // self.p.n
-        part_range = col_range // self.p.ptns
-        for i in range(col_range // part_range):
-            low = col_range * self.worker_id + part_range * i
-            high = low + part_range
-            h: np.ndarray = 1 / np.sqrt(self.p.k) * Worker.random((self.p.k, cols))
-            self.complete.put(Work.initialize(low, high, h, -1))
+        low = col_range * self.worker_id
+        high = low + col_range
+        for part in Partition(low, high).splits(self.p.ptns, False):
+            h: np.ndarray = 1 / np.sqrt(self.p.k) * Worker.random((self.p.k, part.dim()))
+            self.complete.put(Work(part, h, -1, 0))
 
     @ray.method(num_returns=0)
     def run(self):
