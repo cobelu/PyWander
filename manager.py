@@ -23,14 +23,15 @@ class Manager:
 
         self.num_col_parts = self.p.n * self.p.ptns
         a_csr = load(self.p.filename, self.p.normalize)
-        row_ptns = Partition(0, a_csr.shape[0]).splits(self.p.n, False)
+        rows, cols = a_csr.shape
+        row_ptns = Partition(0, rows).splits(self.p.n, False)
+        col_ptns = Partition(0, cols).splits(self.p.n, False)
 
         self.workers = []
         for i in range(self.p.n):
-            row_partition = row_ptns[i]
-            a_csc = a_csr[row_partition.low:row_partition.high].tocsc()
+            a_csc = a_csr[row_ptns[i].low:row_ptns[i].high].tocsc()
             self.workers.append(Worker.remote(i, p, self.pending, self.complete,
-                                self.results, a_csc, row_partition))
+                                self.results, a_csc, row_ptns[i], col_ptns[i]))
         [worker.run.remote() for worker in self.workers]
 
     def run(self):

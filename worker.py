@@ -24,7 +24,7 @@ class Worker(object):
     logger = logging.getLogger(__name__)
 
     def __init__(self, worker_id: int, p: Parameters, pending: Queue, complete: Queue, results: Queue,
-                 a_csc: csc_matrix, row_partition: Partition):
+                 a_csc: csc_matrix, row_partition: Partition, col_partition: Partition):
         if p.verbose:
             Worker.logger.setLevel(logging.DEBUG)
         Worker.logger.debug("Got partition: {0}".format(row_partition))
@@ -45,13 +45,7 @@ class Worker(object):
         self.w: np.ndarray = 1 / np.sqrt(self.p.k) * Worker.random((rows, self.p.k))
         self.tmp: np.ndarray = np.empty(self.p.k, dtype=np.float64)  # Pre-allocated
         # Data to be found
-        # TODO: double check this partitioning
-        #   -it might be off by one (either one too many/too few) partitions
-        #   -also it might be off if the HIGH part of the range is inclusive/exclusive
-        col_range = cols // self.p.n
-        low = col_range * self.worker_id
-        high = low + col_range
-        for part in Partition(low, high).splits(self.p.ptns, False):
+        for part in Partition(col_partition.low, col_partition.high).splits(self.p.ptns, False):
             h: np.ndarray = 1 / np.sqrt(self.p.k) * Worker.random((self.p.k, part.dim()))
             self.complete.put(Work(part, h, -1, 0))
 
