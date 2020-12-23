@@ -45,7 +45,7 @@ class Worker(object):
         self.w: np.ndarray = 1 / np.sqrt(self.p.k) * Worker.random((rows, self.p.k))
         self.tmp: np.ndarray = np.empty(self.p.k, dtype=np.float64)  # Pre-allocated
         # Data to be found
-        for part in Partition(col_partition.low, col_partition.high).splits(self.p.ptns, False):
+        for part in Partition(col_partition.low, col_partition.high).ptn_dsgd(self.p.ptns, False):
             h: np.ndarray = 1 / np.sqrt(self.p.k) * Worker.random((self.p.k, part.dim()))
             self.complete.put(Work(part, h, -1, 0))
 
@@ -70,10 +70,10 @@ class Worker(object):
         total = 0.0
         nnz = 0
         h = np.copy(work.h)
-        if self.p.bold:
-            step = self.step_size(work)
-        else:
-            step = 1
+        # if self.p.bold:
+        #     step = self.step_size(work)
+        # else:
+        #     step = 1
         for j in range(work.dim()):
             hj = h[:, j]
             for i_iter in range(self.a_csc.indptr[j], self.a_csc.indptr[j + 1]):
@@ -88,13 +88,10 @@ class Worker(object):
                 np.copyto(self.tmp, wi)  # Temp stored for wi to be replaced gracefully
                 # Descent
                 # Wi -= lrate * (err*Hj + lambda*Wi)
-                wi -= step * self.p.alpha * (err * hj + self.p.lamda * wi)
+                wi -= self.p.alpha * (err * hj + self.p.lamda * wi)  # * step
                 # Hj -= lrate * (err*tmp + lambda*Hj);
-                hj -= step * self.p.alpha * (err * self.tmp + self.p.lamda * hj)
+                hj -= self.p.alpha * (err * self.tmp + self.p.lamda * hj)  # * step
                 # Calculate RMSE
-                # test_wi = wi * np.sqrt(self.normalizer)
-                # test_hj = hj * np.sqrt(self.normalizer)
-                # err = aij - np.dot(test_wi, test_hj)  # (yi' - yi)
                 total += np.power(err, 2)  # Σ_{i=1}^{n} (yi' - yi)^2
                 # Note the count of the nnz
                 nnz += 1
@@ -104,6 +101,10 @@ class Worker(object):
 
     def step_size(self, work: Work):
         return self.p.lamda * 1.5 / (1.0 + self.p.beta * pow(work.updates + 1, 1.5))
+
+    def lr(self, alpha: float):
+        Worker.logger.debug("Setting alpha on {0}".format(self.worker_id))
+        self.p.alpha = alpha
 
     @staticmethod
     def random(shape: (int, int)) -> np.ndarray:

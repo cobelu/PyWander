@@ -1,5 +1,10 @@
 from scipy.sparse import load_npz, csr_matrix
 
+DSGD = "DSGD"
+DSGDPP = "DSGDPP"
+FPSGD = "FPSGD"
+NOMAD = "NOMAD"
+
 
 def load(filename: str, normalize=False) -> csr_matrix:
     print("Loading " + filename)

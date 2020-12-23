@@ -17,3 +17,9 @@
   * `[sudo] ray up support/bsn.yaml`
 * Network Troubleshooting:
   * `sudo netstat -peanut | grep ":8265"`
+
+## TODO
+* Train/Test split (what are the values?)
+* Bold driving fixes
+* HugeWiki download/conversion
+* MovieLens download/conversion

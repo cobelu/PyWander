@@ -6,7 +6,7 @@ class Parameters:
 
     def __init__(self, sync: bool, n: int, d: int, k: int, alpha: float,
                  beta: float, lamda: float, ptns: int, report: int, filename: str,
-                 normalize: bool, bold: bool, verbose: bool):
+                 normalize: bool, bold: bool, verbose: bool, method: str):
         """
         Initializes an instance of Parameters
 
@@ -31,4 +31,5 @@ class Parameters:
         self.filename = filename
         self.normalize = normalize
         self.bold = bold
+        self.method = method
         self.verbose = verbose

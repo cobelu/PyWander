@@ -19,13 +19,35 @@ class Partition:
         high = csr.shape()[0]  # End is the number of rows
         return cls(low, high)
 
-    def splits(self, n: int, shuffled=False) -> List[Partition]:
+    def ptn_dsgd(self, n: int, shuffled=False) -> List[Partition]:
         dim = self.dim()
+        # "Evenly" split blocks
         avg = dim // n
-        extra = self.dim() % n
-        # Add everything that's average to the list
-        works = []
+        extra = dim % n
+        return self.ptn_helper(n, avg, extra, shuffled)
+
+    def ptn_dsgdpp(self, n: int, shuffled=False) -> List[Partition]:
+        dim = self.dim()
+        # Block sizes are halved
+        avg = (dim // n) // 2
+        extra = dim % (n // 2)
+        return self.ptn_helper(n, avg, extra, shuffled)
+
+    def ptn_fpsgd(self, n: int, shuffled=False) -> List[Partition]:
+        dim = self.dim()
+        # "Evenly" split blocks
+        avg = dim // (n + 1)
+        extra = dim % (n + 1)
+        return self.ptn_helper(n, avg, extra, shuffled)
+
+    def ptn_nomad(self) -> List[Partition]:
+        n = self.dim()
+        return [Partition(self.low + i, self.low + (i + 1)) for i in range(n)]
+
+    def ptn_helper(self, n: int, avg: int, extra: int, shuffled=False):
+        works: List[Partition] = []
         last = self.low
+        # Add the averages to the list
         for _ in range(n - extra):
             nxt = last + avg
             works.append(Partition(last, nxt))
@@ -38,10 +60,6 @@ class Partition:
         if shuffled:
             shuffle(works)
         return works
-
-    def individuals(self) -> List[Partition]:
-        n = self.dim()
-        return [Partition(self.low + i, self.low + (i + 1)) for i in range(n)]
 
     def dim(self) -> int:
         return self.high - self.low

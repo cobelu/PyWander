@@ -10,6 +10,7 @@ from parameters import Parameters
 from partition import Partition
 from util import load, load_with_features
 from worker import Worker
+from util import DSGD, DSGDPP, FPSGD, NOMAD
 
 
 class Manager:
@@ -17,6 +18,7 @@ class Manager:
         self.p = p
         self.nnz = 0
         self.rmse = 0
+        self.obj = 0
         self.pending = Queue()
         self.complete = Queue()
         self.results = Queue()
@@ -24,8 +26,17 @@ class Manager:
         self.num_col_parts = self.p.n * self.p.ptns
         a_csr = load(self.p.filename, self.p.normalize)
         rows, cols = a_csr.shape
-        row_ptns = Partition(0, rows).splits(self.p.n, False)
-        col_ptns = Partition(0, cols).splits(self.p.n, False)
+        row_ptns = Partition(0, rows).ptn_dsgd(self.p.n, False)
+        # Determine how to partition cols
+        col_ptn = Partition(0, cols)
+        if self.p.method == DSGDPP:
+            col_ptns = col_ptn.ptn_dsgdpp(self.p.n)
+        elif self.p.method == FPSGD:
+            col_ptns = col_ptn.ptn_fpsgd(self.p.n)
+        elif self.p.method == NOMAD:
+            col_ptns = col_ptn.ptn_nomad()
+        else:
+            col_ptns = col_ptn.ptn_dsgd(self.p.n)
 
         self.workers = []
         for i in range(self.p.n):
@@ -60,6 +71,13 @@ class SyncManager(Manager):
                 # Double check this
                 self.nnz += nnz
                 self.rmse = ((self.nnz - nnz) / self.nnz) * self.rmse + total / self.nnz
+                if self.p.bold:
+                    obj = self.rmse + self.p.lamda * self.nnz  # TODO: Regularization term not necc'ly nnz
+                    if obj > self.obj:
+                        self.p.alpha *= self.p.beta
+                    else:
+                        self.p.alpha *= self.p.beta
+                    [worker.lr.remote(self.p.alpha) for worker in self.workers]
             if step % self.p.report == 0:
                 self.print_rmse()
         print('FINAL')

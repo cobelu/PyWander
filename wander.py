@@ -6,9 +6,13 @@ import ray
 
 from manager import SyncManager, AsyncManager
 from parameters import Parameters
+from util import DSGD, DSGDPP, FPSGD, NOMAD
 
 
 def main():
+    # Methods for division
+    methods = [DSGD, DSGDPP, FPSGD, NOMAD]
+
     # Args
     parser = argparse.ArgumentParser()
     parser.add_argument('-a', '--alpha', default=0.008, type=float)
@@ -23,6 +27,7 @@ def main():
     parser.add_argument('-s', '--sync', action='store_true')
     parser.add_argument('-o', '--bold', action='store_true')
     parser.add_argument('-v', '--verbose', action='store_true')
+    parser.add_argument('-m', '--method',  default=DSGD, type=str)
     parser.add_argument('filename')
     args = parser.parse_args()
 
@@ -40,6 +45,11 @@ def main():
     normalize = args.normalize
     bold = args.bold
     verbose = args.verbose
+    method = str(args.method).upper()
+
+    # Determine the division method
+    if method not in methods:
+        raise NotImplementedError
 
     # Netflix
     # ⍺ = 0.008
@@ -51,7 +61,8 @@ def main():
     # β = 0.05
     # λ = 1
 
-    p = Parameters(sync, workers, duration, k, alpha, beta, lamda, ptns, report, filename, normalize, bold, verbose)
+    p = Parameters(sync, workers, duration, k, alpha, beta, lamda,
+                   ptns, report, filename, normalize, bold, verbose, method)
 
     # Go do stuff with Ray
     ray.init()
