@@ -43,7 +43,6 @@ class Manager:
             a_csc = a_csr[row_ptns[i].low:row_ptns[i].high].tocsc()
             self.workers.append(Worker.remote(i, p, self.pending, self.complete,
                                 self.results, a_csc, row_ptns[i], col_ptns[i]))
-        [worker.run.remote() for worker in self.workers]
 
     def run(self):
         raise NotImplementedError()
@@ -59,6 +58,7 @@ class Manager:
 
 class SyncManager(Manager):
     def run(self):
+        [worker.run.remote() for worker in self.workers]
         start = time.time()
         for step in range(1, self.p.d + 1):
             print("Iteration: {0}".format(step))
@@ -88,13 +88,14 @@ class SyncManager(Manager):
 
 class AsyncManager(Manager):
     def run(self):
+        [worker.run.remote() for worker in self.workers]
         start = time.time()
         for i in range(self.num_col_parts):
             self.pending.put(self.complete.get())
         while True:
             while not self.results.empty():
                 nnz, total = self.results.get()
-                # https://stats.stackexchange.com/questions/221826/is-it-possible-to-compute-rmse-iteratively
+                # https://stats.stackexchange.com/a/221831
                 # Double check this
                 self.nnz += nnz
                 self.rmse = ((self.nnz - nnz) / self.nnz) * self.rmse + total / self.nnz
@@ -104,6 +105,7 @@ class AsyncManager(Manager):
                 break
             print('Elapsed:', elapsed)
             self.print_rmse()
+
         print('FINAL')
         self.print_rmse()
         print('runtime:', time.time() - start)

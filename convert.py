@@ -10,8 +10,8 @@ import os
 
 
 def main():
-    in_file = "/Users/cobelu/Documents/Research/mf/data/yahoo/ydata-ymusic-user-artist-ratings-v1_0.txt"
-    out_file = "data/yahoo.npz"
+    in_file = "/Users/cobelu/Documents/Research/mf/data/ml-25m/train.txt"
+    out_file = "data/movielens.npz"
 
     # Load the file
     df = pd.read_csv(in_file, header=None, sep='\t')
