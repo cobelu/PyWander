@@ -124,7 +124,7 @@ class Scheduler(object):
         return total, nnz_ctr
 
     def load(self, filename: str) -> csr_matrix:
-        Scheduler.logger.debug("Loading " + filename)
+        # Scheduler.logger.debug("Loading " + filename)
         try:
             sparse_matrix: csr_matrix = load_npz(filename)
             # Normalize per: https://stackoverflow.com/a/62690439

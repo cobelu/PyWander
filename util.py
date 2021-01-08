@@ -7,7 +7,7 @@ NOMAD = "NOMAD"
 
 
 def load(filename: str, normalize=False) -> csr_matrix:
-    print("Loading " + filename)
+    # print("Loading " + filename)
     try:
         a_csr: csr_matrix = load_npz(filename)
         # Normalize per: https://stackoverflow.com/a/62690439

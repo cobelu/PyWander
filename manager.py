@@ -44,13 +44,34 @@ class Manager:
             self.workers.append(Worker.remote(i, p, self.pending, self.complete,
                                 self.results, a_csc, row_ptns[i], col_ptns[i]))
 
+        self.print_params()
+
     def run(self):
         raise NotImplementedError()
 
-    def print_rmse(self):
-        print("\tNNZ: {0}".format(self.nnz))
+    def print_rmse(self, dur, step=None):
         rmse = np.sqrt(self.rmse) if self.nnz > 0 else np.NaN
-        print("\tRMSE: {0}".format(rmse))
+        # print("\tNNZ: {0}".format(self.nnz))
+        # print("\tRMSE: {0}".format(rmse))
+        if step:
+            print("{0},{1},{2},{3}".format(dur, self.nnz, rmse, step))
+        else:
+            print("{0},{1},{2}".format(dur, self.nnz, rmse))
+
+    def print_params(self):
+        print("sync,{0}".format(self.p.sync))
+        print("n,{0}".format(self.p.n))
+        print("d,{0}".format(self.p.d))
+        print("k,{0}".format(self.p.k))
+        print("alpha,{0}".format(self.p.alpha))
+        print("beta,{0}".format(self.p.beta))
+        print("lamda,{0}".format(self.p.lamda))
+        print("ptns,{0}".format(self.p.ptns))
+        print("report,{0}".format(self.p.report))
+        print("normalize,{0}".format(self.p.normalize))
+        print("bold,{0}".format(self.p.bold))
+        print("method,{0}".format(self.p.method))
+        print("-"*50)
 
     def shutdown(self):
         [ray.kill(worker) for worker in self.workers]
@@ -61,7 +82,7 @@ class SyncManager(Manager):
         [worker.run.remote() for worker in self.workers]
         start = time.time()
         for step in range(1, self.p.d + 1):
-            print("Iteration: {0}".format(step))
+            # print("Iteration: {0}".format(step))
             # Place initial work on queue
             for i in range(self.num_col_parts):
                 self.pending.put(self.complete.get())
@@ -78,10 +99,11 @@ class SyncManager(Manager):
                     else:
                         self.p.alpha *= self.p.beta
                     [worker.lr.remote(self.p.alpha) for worker in self.workers]
-            if step % self.p.report == 0:
-                self.print_rmse()
-        print('FINAL')
-        self.print_rmse()
+            # if step % self.p.report == 0:
+            elapsed = time.time() - start
+            self.print_rmse(elapsed, step)
+        # print('FINAL')
+        # self.print_rmse(step)
         print('runtime:', time.time() - start)
         self.shutdown()
 
@@ -103,10 +125,8 @@ class AsyncManager(Manager):
             elapsed = time.time() - start
             if elapsed > self.p.d:
                 break
-            print('Elapsed:', elapsed)
-            self.print_rmse()
-
-        print('FINAL')
-        self.print_rmse()
+            self.print_rmse(elapsed)
+        # print('FINAL')
+        # self.print_rmse()
         print('runtime:', time.time() - start)
         self.shutdown()
