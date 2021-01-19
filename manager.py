@@ -1,3 +1,4 @@
+import multiprocessing
 from typing import List
 
 import numpy as np
@@ -9,6 +10,7 @@ from scipy.sparse import csr_matrix, load_npz
 from parameters import Parameters
 from partition import Partition
 from util import load, load_with_features
+from work import Work
 from worker import Worker
 from util import DSGD, DSGDPP, FPSGD, NOMAD
 
@@ -23,7 +25,6 @@ class Manager:
         self.complete = Queue()
         self.results = Queue()
 
-        self.num_col_parts = self.p.n * self.p.ptns
         a_csr = load(self.p.filename, self.p.normalize)
         rows, cols = a_csr.shape
         row_ptns = Partition(0, rows).ptn_dsgd(self.p.n, False)
@@ -37,12 +38,25 @@ class Manager:
             col_ptns = col_ptn.ptn_nomad()
         else:
             col_ptns = col_ptn.ptn_dsgd(self.p.n)
+        self.num_col_parts = len(col_ptns)
 
-        self.workers = []
-        for i in range(self.p.n):
-            a_csc = a_csr[row_ptns[i].low:row_ptns[i].high].tocsc()
-            self.workers.append(Worker.remote(i, p, self.pending, self.complete,
-                                self.results, a_csc, row_ptns[i], col_ptns[i]))
+        # Initialize the workers
+        self.workers = [
+            Worker.remote(
+                i,
+                p,
+                self.pending,
+                self.complete,
+                self.results,
+                a_csr[row_ptns[i].low:row_ptns[i].high].tocsc(),
+                row_ptns[i],
+                # col_ptns[i]
+            ) for i in range(self.p.n)
+        ]
+
+        for ptn in col_ptns:
+            h: np.ndarray = 1 / np.sqrt(self.p.k) * Worker.random((self.p.k, ptn.dim()))
+            self.pending.put(Work(ptn, h, -1, 0))
 
         self.print_params()
 
@@ -50,27 +64,31 @@ class Manager:
         raise NotImplementedError()
 
     def print_rmse(self, dur, step=None):
-        rmse = np.sqrt(self.rmse) if self.nnz > 0 else np.NaN
+        rmse = np.sqrt(self.rmse / self.nnz) if self.nnz > 0 else np.NaN
         # print("\tNNZ: {0}".format(self.nnz))
         # print("\tRMSE: {0}".format(rmse))
         if step:
-            print("{0},{1},{2},{3}".format(dur, self.nnz, rmse, step))
+            print("{0}\t{1}\t{2}\t{3}".format(dur, self.nnz, rmse, step))
         else:
-            print("{0},{1},{2}".format(dur, self.nnz, rmse))
+            print("{0}\t{1}\t{2}".format(dur, self.nnz, rmse))
 
     def print_params(self):
-        print("sync,{0}".format(self.p.sync))
-        print("n,{0}".format(self.p.n))
-        print("d,{0}".format(self.p.d))
-        print("k,{0}".format(self.p.k))
-        print("alpha,{0}".format(self.p.alpha))
-        print("beta,{0}".format(self.p.beta))
-        print("lamda,{0}".format(self.p.lamda))
-        print("ptns,{0}".format(self.p.ptns))
-        print("report,{0}".format(self.p.report))
-        print("normalize,{0}".format(self.p.normalize))
-        print("bold,{0}".format(self.p.bold))
-        print("method,{0}".format(self.p.method))
+        print("sync\tn\td\tk\talpha\tbeta\tlamda\tptns\treport\tnormalize\tbold\tmethod\tdata")
+        print("{0}\t{1}\t{2}\t{3}\t{4}\t{5}\t{6}\t{7}\t{8}\t{9}\t{10}\t{11}\t{12}".format(
+            self.p.sync,
+            self.p.n,
+            self.p.d,
+            self.p.k,
+            self.p.alpha,
+            self.p.beta,
+            self.p.lamda,
+            self.p.ptns,
+            self.p.report,
+            self.p.normalize,
+            self.p.bold,
+            self.p.method,
+            self.p.filename),
+        )
         print("-"*50)
 
     def shutdown(self):
@@ -91,7 +109,9 @@ class SyncManager(Manager):
                 # https://stats.stackexchange.com/questions/221826/is-it-possible-to-compute-rmse-iteratively
                 # Double check this
                 self.nnz += nnz
-                self.rmse = ((self.nnz - nnz) / self.nnz) * self.rmse + total / self.nnz
+                # TODO: RMSE
+                self.rmse += total
+                # self.rmse = ((self.nnz - nnz) / self.nnz) * self.rmse + total / self.nnz
                 if self.p.bold:
                     obj = self.rmse + self.p.lamda * self.nnz  # TODO: Regularization term not necc'ly nnz
                     if obj > self.obj:
@@ -110,23 +130,30 @@ class SyncManager(Manager):
 
 class AsyncManager(Manager):
     def run(self):
+        # print("Running...")
         [worker.run.remote() for worker in self.workers]
+        # print("Pending...")
+        # Initial work is already placed on queue
+        # for i in range(self.num_col_parts):
+        #     self.pending.put(self.complete.get())
         start = time.time()
-        for i in range(self.num_col_parts):
-            self.pending.put(self.complete.get())
+        shout = self.p.report
+        # print("Report: {0}".format(shout))
         while True:
-            while not self.results.empty():
+            # print("In the loop")
+            if not self.results.empty():
                 nnz, total = self.results.get()
+                # print("[NNZ: {0}, TOTAL: {1}".format(nnz, total))
                 # https://stats.stackexchange.com/a/221831
                 # Double check this
                 self.nnz += nnz
-                self.rmse = ((self.nnz - nnz) / self.nnz) * self.rmse + total / self.nnz
-            time.sleep(self.p.report)
+                self.rmse += total
             elapsed = time.time() - start
-            if elapsed > self.p.d:
+            if elapsed >= self.p.d:
+                self.print_rmse(elapsed)
                 break
-            self.print_rmse(elapsed)
-        # print('FINAL')
-        # self.print_rmse()
-        print('runtime:', time.time() - start)
+            if elapsed >= shout:
+                self.print_rmse(elapsed)
+                shout += self.p.report
         self.shutdown()
+        return

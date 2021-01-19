@@ -1,17 +1,14 @@
-from typing import List
-
 import numpy as np
-from ray.util.queue import Queue
 
 from partition import Partition
 
 
 class Work:
     def __init__(self, ptn: Partition, h: np.ndarray, prev: int, updates: int):
-        self.ptn = ptn
-        self.h = h
-        self.prev = prev
-        self.updates = updates
+        self.ptn: Partition = ptn
+        self.h: np.ndarray = h
+        self.prev: int = prev
+        self.updates: int = updates
 
     def low(self) -> int:
         return self.ptn.low
@@ -27,4 +24,4 @@ class Work:
         return Work(Partition(low, high), h, prev, 0)
 
     def __str__(self):
-        return "Work{" + str(self.ptn) + ", " + str(self.prev) + "}"
+        return "Work({0})".format(self.ptn)

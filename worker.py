@@ -24,7 +24,7 @@ class Worker(object):
     logger = logging.getLogger(__name__)
 
     def __init__(self, worker_id: int, p: Parameters, pending: Queue, complete: Queue, results: Queue,
-                 a_csc: csc_matrix, row_partition: Partition, col_partition: Partition):
+                 a_csc: csc_matrix, row_partition: Partition):
         if p.verbose:
             Worker.logger.setLevel(logging.DEBUG)
         Worker.logger.debug("Got partition: {0}".format(row_partition))
@@ -39,15 +39,12 @@ class Worker(object):
         # Get the shape to know how large the parameter matrices
         shape = self.a_csc.shape
         rows: int = shape[0]  # Number of rows ON THE MACHINE
-        cols: int = shape[1]
+        # cols: int = shape[1]
         Worker.logger.debug("Size of CSC: ({0}, {1})".format(shape[0], shape[1]))
         # Create the arrays for computation
         self.w: np.ndarray = 1 / np.sqrt(self.p.k) * Worker.random((rows, self.p.k))
         self.tmp: np.ndarray = np.empty(self.p.k, dtype=np.float64)  # Pre-allocated
-        # Data to be found
-        for part in Partition(col_partition.low, col_partition.high).ptn_dsgd(self.p.ptns, False):
-            h: np.ndarray = 1 / np.sqrt(self.p.k) * Worker.random((self.p.k, part.dim()))
-            self.complete.put(Work(part, h, -1, 0))
+        # h is assigned later
 
     @ray.method(num_returns=0)
     def run(self):
@@ -64,8 +61,9 @@ class Worker(object):
                 self.pending.put(work)
         return
 
+    @ray.method(num_returns=3)
     def sgd(self, work: Work):
-        start = time.time()
+        # start = time.time()
         Worker.logger.debug("Crunching on {0}".format(work))
         total = 0.0
         nnz = 0
@@ -76,7 +74,10 @@ class Worker(object):
         #     step = 1
         for j in range(work.dim()):
             hj = h[:, j]
+            # print("Length: {0}".format(len(self.a_csc.indptr[j:j + 1])))
+            # print("Diff: {0}".format(self.a_csc.indptr[j + 1] - self.a_csc.indptr[j]))
             for i_iter in range(self.a_csc.indptr[j], self.a_csc.indptr[j + 1]):
+                # TODO: NOT EXECUTING HERE FOR NOMAD
                 i = self.a_csc.indices[i_iter]
                 # Get the W row
                 wi = self.w[i]
@@ -95,8 +96,8 @@ class Worker(object):
                 total += np.power(err, 2)  # Σ_{i=1}^{n} (yi' - yi)^2
                 # Note the count of the nnz
                 nnz += 1
-        stop = time.time()
-        Worker.logger.debug("Worker {0} done in {1}".format(self.worker_id, stop - start))
+        # stop = time.time()
+        # Worker.logger.debug("Worker {0} done in {1}".format(self.worker_id, stop - start))
         return Work(work.ptn, h, self.worker_id, work.updates + 1), nnz, total
 
     def step_size(self, work: Work):

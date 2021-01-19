@@ -17,7 +17,13 @@ class Parameters:
         :param alpha: Learning rate
         :param beta: Decay rate
         :param lamda: Normalization factor
-        :param file: Path to sparse matrix ratings file
+        :param ptns: (deprecated)
+        :param report:
+        :param filename: Path to sparse matrix ratings file
+        :param normalize: Normalizes the matrix if True
+        :param bold: Utilize bold-driver tuning if True
+        :param method: Partitioning method
+        :param verbose: Displays more details through logging if True
         """
         self.sync = sync
         self.n = n
