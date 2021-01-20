@@ -38,7 +38,6 @@ class Manager:
             col_ptns = col_ptn.ptn_nomad()
         else:
             col_ptns = col_ptn.ptn_dsgd(self.p.n)
-        self.num_col_parts = len(col_ptns)
 
         # Initialize the workers
         self.workers = [
@@ -54,9 +53,13 @@ class Manager:
             ) for i in range(self.p.n)
         ]
 
-        for ptn in col_ptns:
-            h: np.ndarray = 1 / np.sqrt(self.p.k) * Worker.random((self.p.k, ptn.dim()))
-            self.pending.put(Work(ptn, h, -1, 0))
+        [self.pending.put(
+            Work(
+                ptn,
+                1 / np.sqrt(self.p.k) * Worker.random((self.p.k, ptn.dim())),
+                -1,
+                0,
+            )) for ptn in col_ptns]
 
         self.print_params()
 
@@ -102,14 +105,13 @@ class SyncManager(Manager):
         for step in range(1, self.p.d + 1):
             # print("Iteration: {0}".format(step))
             # Place initial work on queue
-            for i in range(self.num_col_parts):
-                self.pending.put(self.complete.get())
-            for i in range(self.num_col_parts):
+            # for i in range(self.num_col_parts):
+            #     self.pending.put(self.complete.get())
+            for i in range(self.p.d):
                 nnz, total = self.results.get()
                 # https://stats.stackexchange.com/questions/221826/is-it-possible-to-compute-rmse-iteratively
                 # Double check this
                 self.nnz += nnz
-                # TODO: RMSE
                 self.rmse += total
                 # self.rmse = ((self.nnz - nnz) / self.nnz) * self.rmse + total / self.nnz
                 if self.p.bold:
@@ -130,17 +132,14 @@ class SyncManager(Manager):
 
 class AsyncManager(Manager):
     def run(self):
-        # print("Running...")
         [worker.run.remote() for worker in self.workers]
-        # print("Pending...")
         # Initial work is already placed on queue
         # for i in range(self.num_col_parts):
         #     self.pending.put(self.complete.get())
         start = time.time()
         shout = self.p.report
-        # print("Report: {0}".format(shout))
+        # Start working
         while True:
-            # print("In the loop")
             if not self.results.empty():
                 nnz, total = self.results.get()
                 # print("[NNZ: {0}, TOTAL: {1}".format(nnz, total))

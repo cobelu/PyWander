@@ -28,6 +28,7 @@ class Worker(object):
         if p.verbose:
             Worker.logger.setLevel(logging.DEBUG)
         Worker.logger.debug("Got partition: {0}".format(row_partition))
+
         # Args
         self.worker_id = worker_id
         self.p = p
@@ -72,10 +73,14 @@ class Worker(object):
         #     step = self.step_size(work)
         # else:
         #     step = 1
-        for j in range(work.dim()):
-            hj = h[:, j]
+        # print("Work dim: {0}".format(work.dim()))
+        work_dim = work.dim()
+        # TODO: Indexing over h or a_csc??? FIX THIS ASAP
+        for j in range(work.low(), work.high()):
+            col = j - work.low()
+            hj = h[:, col]
             # print("Length: {0}".format(len(self.a_csc.indptr[j:j + 1])))
-            # print("Diff: {0}".format(self.a_csc.indptr[j + 1] - self.a_csc.indptr[j]))
+            # print("From: {0}; To: {1}".format(self.a_csc.indptr[j], self.a_csc.indptr[j + 1]))
             for i_iter in range(self.a_csc.indptr[j], self.a_csc.indptr[j + 1]):
                 # TODO: NOT EXECUTING HERE FOR NOMAD
                 i = self.a_csc.indices[i_iter]
@@ -85,7 +90,7 @@ class Worker(object):
                 aij = self.a_csc.data[i_iter]
                 # Error = [(Wi • Hj) - Aij]
                 err = np.dot(wi, hj) - aij
-                # TODO: is it possible to do without the copy?
+                # Get the temp vector for calculation
                 np.copyto(self.tmp, wi)  # Temp stored for wi to be replaced gracefully
                 # Descent
                 # Wi -= lrate * (err*Hj + lambda*Wi)
@@ -98,6 +103,7 @@ class Worker(object):
                 nnz += 1
         # stop = time.time()
         # Worker.logger.debug("Worker {0} done in {1}".format(self.worker_id, stop - start))
+        # print("Returning NNZ: {0} & total: {1}".format(nnz, total))
         return Work(work.ptn, h, self.worker_id, work.updates + 1), nnz, total
 
     def step_size(self, work: Work):

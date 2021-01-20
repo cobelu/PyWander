@@ -42,6 +42,7 @@ class Partition:
 
     def ptn_nomad(self) -> List[Partition]:
         n = self.dim()
+        # TODO: Check indexing
         return [Partition(self.low + i, self.low + (i + 1)) for i in range(n)]
 
     def ptn_helper(self, n: int, avg: int, extra: int, shuffled=False):
