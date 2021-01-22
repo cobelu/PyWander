@@ -119,7 +119,7 @@ class SyncManager(Manager):
                     if obj > self.obj:
                         self.p.alpha *= self.p.beta
                     else:
-                        self.p.alpha *= self.p.beta
+                        self.p.alpha *= 1.05
                     [worker.lr.remote(self.p.alpha) for worker in self.workers]
             # if step % self.p.report == 0:
             elapsed = time.time() - start
