@@ -28,6 +28,7 @@ def main():
     parser.add_argument('-o', '--bold', action='store_true')
     parser.add_argument('-v', '--verbose', action='store_true')
     parser.add_argument('-m', '--method',  default=DSGD, type=str)
+    parser.add_argument('-t', '--train_size', default=0.8, type=float)
     parser.add_argument('filename')
     args = parser.parse_args()
 
@@ -46,10 +47,12 @@ def main():
     bold = args.bold
     verbose = args.verbose
     method = str(args.method).upper()
+    train_size = args.train_size
 
     # Determine the division method
     if method not in methods:
         raise NotImplementedError
+    assert 0 <= train_size <= 1, "train_size should be between 0 and 1"
 
     # Netflix
     # ⍺ = 0.008
@@ -62,7 +65,7 @@ def main():
     # λ = 1
 
     p = Parameters(sync, workers, duration, k, alpha, beta, lamda,
-                   ptns, report, filename, normalize, bold, verbose, method)
+                   ptns, report, filename, normalize, bold, verbose, method, train_size)
 
     # Go do stuff with Ray
     ray.init()

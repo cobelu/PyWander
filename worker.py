@@ -23,29 +23,28 @@ class Worker(object):
     logging.basicConfig(level=logging.WARNING)
     logger = logging.getLogger(__name__)
 
-    def __init__(self, worker_id: int, p: Parameters, pending: Queue, complete: Queue, results: Queue,
-                 a_csc: csc_matrix, row_partition: Partition):
+    def __init__(self, worker_id: int, p: Parameters, pending: Queue, results: Queue,
+                 a_csc_train: csc_matrix, a_csc_test: csc_matrix, row_partition: Partition):
         if p.verbose:
             Worker.logger.setLevel(logging.DEBUG)
         Worker.logger.debug("Got partition: {0}".format(row_partition))
 
         # Args
-        self.worker_id = worker_id
-        self.p = p
-        self.pending = pending
-        self.complete = complete
-        self.results = results
-        self.a_csc = a_csc
-        # self.a_csc = shuffle(self.a_csc)  # TODO: Shuffle
+        self.worker_id: int = worker_id
+        self.p: Parameters = p
+        self.pending: Queue = pending
+        self.results: Queue = results
+        self.a_csc: csc_matrix = a_csc_train
         # Get the shape to know how large the parameter matrices
         shape = self.a_csc.shape
         rows: int = shape[0]  # Number of rows ON THE MACHINE
-        # cols: int = shape[1]
+        cols: int = shape[1]
         Worker.logger.debug("Size of CSC: ({0}, {1})".format(shape[0], shape[1]))
         # Create the arrays for computation
         self.w: np.ndarray = 1 / np.sqrt(self.p.k) * Worker.random((rows, self.p.k))
         self.tmp: np.ndarray = np.empty(self.p.k, dtype=np.float64)  # Pre-allocated
         # h is assigned later
+        self.h: np.ndarray = np.empty((self.p.k, cols))
 
     @ray.method(num_returns=0)
     def run(self):
@@ -56,10 +55,7 @@ class Worker(object):
                 continue
             work, nnz, total = self.sgd(work)
             self.results.put((nnz, total))
-            if self.p.sync:
-                self.complete.put(work)
-            else:
-                self.pending.put(work)
+            self.pending.put(work)
         return
 
     @ray.method(num_returns=3)
@@ -68,21 +64,24 @@ class Worker(object):
         Worker.logger.debug("Crunching on {0}".format(work))
         total = 0.0
         nnz = 0
-        h = np.copy(work.h)
+        work.h.flags.writeable = True
+        # TODO: Did it work?
+        # dim = work.dim()
+        # np.copyto(self.h[:, :dim], work.h)
+        # h = np.copy(work.h)
+
         # if self.p.bold:
         #     step = self.step_size(work)
         # else:
         #     step = 1
-        # print("Work dim: {0}".format(work.dim()))
-        work_dim = work.dim()
-        # TODO: Indexing over h or a_csc??? FIX THIS ASAP
+
         for j in range(work.low(), work.high()):
             col = j - work.low()
-            hj = h[:, col]
+            # hj = self.h[:, col]
+            hj = work.h[:, col]
             # print("Length: {0}".format(len(self.a_csc.indptr[j:j + 1])))
             # print("From: {0}; To: {1}".format(self.a_csc.indptr[j], self.a_csc.indptr[j + 1]))
             for i_iter in range(self.a_csc.indptr[j], self.a_csc.indptr[j + 1]):
-                # TODO: NOT EXECUTING HERE FOR NOMAD
                 i = self.a_csc.indices[i_iter]
                 # Get the W row
                 wi = self.w[i]
@@ -104,7 +103,10 @@ class Worker(object):
         # stop = time.time()
         # Worker.logger.debug("Worker {0} done in {1}".format(self.worker_id, stop - start))
         # print("Returning NNZ: {0} & total: {1}".format(nnz, total))
-        return Work(work.ptn, h, self.worker_id, work.updates + 1), nnz, total
+        work.updates += 1
+        work.prev = self.worker_id
+        # return Work(work.ptn, self.h[:, :dim], self.worker_id, work.updates + 1), nnz, total
+        return work, nnz, total
 
     def step_size(self, work: Work):
         return self.p.lamda * 1.5 / (1.0 + self.p.beta * pow(work.updates + 1, 1.5))

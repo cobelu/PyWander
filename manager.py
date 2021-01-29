@@ -6,6 +6,7 @@ import ray
 import time
 from ray.util.queue import Queue
 from scipy.sparse import csr_matrix, load_npz
+from sklearn.utils import shuffle
 
 from parameters import Parameters
 from partition import Partition
@@ -22,12 +23,16 @@ class Manager:
         self.rmse = 0
         self.obj = 0
         self.pending = Queue()
-        self.complete = Queue()
         self.results = Queue()
 
+        # Load the data and split into test and train
         a_csr = load(self.p.filename, self.p.normalize)
+        a_csr = shuffle(a_csr)
         rows, cols = a_csr.shape
-        row_ptns = Partition(0, rows).ptn_dsgd(self.p.n, False)
+        train_rows = int(self.p.train_size * rows)
+        train_row_ptns = Partition(0, train_rows).ptn_dsgd(self.p.n, False)
+        test_row_ptns = Partition(train_rows, rows).ptn_dsgd(self.p.n, False)
+
         # Determine how to partition cols
         col_ptn = Partition(0, cols)
         if self.p.method == DSGDPP:
@@ -45,10 +50,10 @@ class Manager:
                 i,
                 p,
                 self.pending,
-                self.complete,
                 self.results,
-                a_csr[row_ptns[i].low:row_ptns[i].high].tocsc(),
-                row_ptns[i],
+                a_csr[train_row_ptns[i].low:train_row_ptns[i].high].tocsc(),
+                a_csr[test_row_ptns[i].low:test_row_ptns[i].high].tocsc(),
+                train_row_ptns[i],
                 # col_ptns[i]
             ) for i in range(self.p.n)
         ]
@@ -105,10 +110,13 @@ class SyncManager(Manager):
         for step in range(1, self.p.d + 1):
             # print("Iteration: {0}".format(step))
             # Place initial work on queue
-            # for i in range(self.num_col_parts):
+            # for i in range(self.p.n):
             #     self.pending.put(self.complete.get())
+            # Go!
             for i in range(self.p.d):
-                nnz, total = self.results.get()
+                results = [self.results.get() for _ in range(self.p.d)]
+                nnz = sum([row[0] for row in results])
+                total = sum([row[1] for row in results])
                 # https://stats.stackexchange.com/questions/221826/is-it-possible-to-compute-rmse-iteratively
                 # Double check this
                 self.nnz += nnz
@@ -134,7 +142,7 @@ class AsyncManager(Manager):
     def run(self):
         [worker.run.remote() for worker in self.workers]
         # Initial work is already placed on queue
-        # for i in range(self.num_col_parts):
+        # for i in range(self.p.n):
         #     self.pending.put(self.complete.get())
         start = time.time()
         shout = self.p.report

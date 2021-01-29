@@ -6,7 +6,7 @@ class Parameters:
 
     def __init__(self, sync: bool, n: int, d: int, k: int, alpha: float,
                  beta: float, lamda: float, ptns: int, report: int, filename: str,
-                 normalize: bool, bold: bool, verbose: bool, method: str):
+                 normalize: bool, bold: bool, verbose: bool, method: str, train_size: float):
         """
         Initializes an instance of Parameters
 
@@ -38,4 +38,5 @@ class Parameters:
         self.normalize = normalize
         self.bold = bold
         self.method = method
+        self.train_size = train_size
         self.verbose = verbose
